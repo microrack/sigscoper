@@ -193,22 +193,19 @@ void loop() {
             }
 
             /*
-            Serial.printf("Signal | min: %u, max: %u, avg: %.2f, freq: %.1f Hz\n",
-                          min_sample_value,
-                          max_sample_value,
-                          avg_value,
-                          frequency);
-            // */
-
+              Serial.printf("Signal | min: %u, max: %u, avg: %.2f, freq: %.1f Hz\n",
+                            min_sample_value,
+                            max_sample_value,
+                            avg_value,
+                            frequency);
+             // */
+  
             // Draw on OLED
             display.clearDisplay();
-            display.setTextSize(2);
+            display.setTextSize(1);
             display.setTextColor(SSD1306_WHITE);
             display.setCursor(0, 0);
-            display.printf("F:%.1fHz\n", frequency);
-            display.setTextSize(1);
-            display.printf("Min:%u Max:%u\n", min_sample_value, max_sample_value);
-            display.printf("Avg:%.1f\n", avg_value);
+            display.printf("%u %u %.1f", min_sample_value, max_sample_value, frequency);
             display.display();
             
             // Store values for next second's calculation
