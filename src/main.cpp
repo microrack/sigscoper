@@ -10,7 +10,7 @@ const int ledcFreq = 100000; // 100 kHz
 
 // Sine wave configuration
 const uint32_t sampling_frequency = 20000; // 20 kHz
-const float sine_frequency = 1.0; // 1 Hz
+const float sine_frequency = 440.0; // 1 Hz
 
 // Globals for ISR
 hw_timer_t *timer = NULL;
