@@ -6,20 +6,24 @@ const int ledcPin = 26;
 // LEDC Configuration
 const int ledcChannel = 0;
 const int ledcResolution = 8;
-const int ledcFreq = 5000;
+const int ledcFreq = 100000; // 100 kHz
 
 // Sine wave configuration
-const uint32_t sampling_frequency = 1000; // 1 kHz
+const uint32_t sampling_frequency = 20000; // 20 kHz
 const float sine_frequency = 1.0; // 1 Hz
 
-// Globals for sine generation
-uint32_t phase_accumulator = 0;
+// Globals for ISR
+hw_timer_t *timer = NULL;
+volatile uint32_t phase_accumulator = 0;
 // (sine_frequency / sampling_frequency) * 2^32
 const uint32_t phase_increment = (uint32_t)((sine_frequency / (float)sampling_frequency) * 4294967296.0);
 uint8_t sin_lut[256];
 
-unsigned long last_update_time = 0;
-const unsigned long sampling_period_us = 1000000 / sampling_frequency;
+void IRAM_ATTR onTimer() {
+    phase_accumulator += phase_increment;
+    uint8_t index = phase_accumulator >> 24;
+    ledcWrite(ledcChannel, sin_lut[index]);
+}
 
 void setup() {
     // Generate sine lookup table
@@ -31,15 +35,16 @@ void setup() {
     // Configure LEDC
     ledcSetup(ledcChannel, ledcFreq, ledcResolution);
     ledcAttachPin(ledcPin, ledcChannel);
+
+    // Configure Timer
+    // APB_CLK is 80MHz, prescaler of 80 gives 1MHz timer clock
+    timer = timerBegin(0, 80, true);
+    timerAttachInterrupt(timer, &onTimer, true);
+    // Set timer to fire at the configured sampling frequency
+    timerAlarmWrite(timer, 1000000 / sampling_frequency, true);
+    timerAlarmEnable(timer);
 }
 
 void loop() {
-    unsigned long current_time = micros();
-    if (current_time - last_update_time >= sampling_period_us) {
-        last_update_time = current_time;
-
-        phase_accumulator += phase_increment;
-        uint8_t index = phase_accumulator >> 24;
-        ledcWrite(ledcChannel, sin_lut[index]);
-    }
+    // Everything is handled by the timer ISR
 }
