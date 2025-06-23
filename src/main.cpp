@@ -2,6 +2,15 @@
 #include <driver/i2s.h>
 #include <driver/adc.h>
 #include <esp_err.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+// OLED display configuration
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define SCREEN_ADDRESS 0x3C
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // Pin Configuration
 const int ledcPin = 26;
@@ -37,11 +46,13 @@ uint64_t total_sample_value = 0;
 uint32_t total_sample_count = 0;
 
 // Frequency calculation
-uint32_t zero_crossings = 0;
 bool signal_was_high = false;
 float last_avg_value = 0;
 uint16_t last_min_value = 0;
 uint16_t last_max_value = 0;
+uint32_t last_crossing_time = 0;
+uint64_t total_crossing_delta = 0;
+uint32_t crossing_delta_count = 0;
 
 void IRAM_ATTR onTimer() {
     phase_accumulator += phase_increment;
@@ -94,6 +105,14 @@ void setup() {
     delay(1000);
     Serial.begin(115200);
 
+    // Initialize OLED display
+    if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for(;;); // Don't proceed, loop forever
+    }
+
+    display.setRotation(2);
+
     // Generate sine lookup table
     for (int i = 0; i < 256; i++) {
         float angle = 2.0 * PI * (float)i / 256.0;
@@ -134,13 +153,20 @@ void loop() {
 
                 // Frequency detection with hysteresis
                 uint16_t signal_range = (last_max_value > last_min_value) ? (last_max_value - last_min_value) : 0;
-                uint16_t hysteresis = signal_range / 3;
-                float upper_threshold = last_avg_value + hysteresis;
-                float lower_threshold = last_avg_value - hysteresis;
+                uint16_t hysteresis = signal_range / 5;
+                float upper_threshold = last_avg_value + hysteresis / 2.0;
+                float lower_threshold = last_avg_value - hysteresis / 2.0;
+
+                uint32_t current_absolute_sample = total_sample_count + i;
 
                 if (!signal_was_high && sample > upper_threshold) {
                     signal_was_high = true;
-                    zero_crossings++;
+                    if (last_crossing_time > 0) {
+                        uint32_t delta = current_absolute_sample - last_crossing_time;
+                        total_crossing_delta += delta;
+                        crossing_delta_count++;
+                    }
+                    last_crossing_time = current_absolute_sample;
                 } else if (signal_was_high && sample < lower_threshold) {
                     signal_was_high = false;
                 }
@@ -154,16 +180,36 @@ void loop() {
         Serial.printf("Warning: I2S DMA buffer nearly full! Read %u bytes.\n", (unsigned int)total_bytes_read_in_cycle);
     }
 
-    // Check if one second has passed
-    if (millis() - last_stats_time >= 1000) {
+    if (millis() - last_stats_time >= 10) {
         if (total_sample_count > 0) {
             float avg_value = (float)total_sample_value / total_sample_count;
-            float frequency = (float)zero_crossings; // Each full wave is counted once
+            
+            float frequency = 0.0;
+            if (crossing_delta_count > 0) {
+                float avg_delta = (float)total_crossing_delta / crossing_delta_count;
+                if (avg_delta > 0) {
+                    frequency = (float)I2S_SAMPLE_RATE / avg_delta;
+                }
+            }
+
+            /*
             Serial.printf("Signal | min: %u, max: %u, avg: %.2f, freq: %.1f Hz\n",
                           min_sample_value,
                           max_sample_value,
                           avg_value,
                           frequency);
+            // */
+
+            // Draw on OLED
+            display.clearDisplay();
+            display.setTextSize(2);
+            display.setTextColor(SSD1306_WHITE);
+            display.setCursor(0, 0);
+            display.printf("F:%.1fHz\n", frequency);
+            display.setTextSize(1);
+            display.printf("Min:%u Max:%u\n", min_sample_value, max_sample_value);
+            display.printf("Avg:%.1f\n", avg_value);
+            display.display();
             
             // Store values for next second's calculation
             last_avg_value = avg_value;
@@ -177,8 +223,8 @@ void loop() {
         max_sample_value = 0;
         total_sample_value = 0;
         total_sample_count = 0;
-        zero_crossings = 0;
+        last_crossing_time = 0;
+        total_crossing_delta = 0;
+        crossing_delta_count = 0;
     }
-
-    delay(10);
 }
