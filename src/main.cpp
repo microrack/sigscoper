@@ -12,11 +12,17 @@
 #define SCREEN_ADDRESS 0x3C
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+// Buffer for graph
+uint16_t signal_graph_buffer[SCREEN_WIDTH];
+int signal_graph_index = 0;
+bool zero_crossing_buffer[SCREEN_WIDTH];
+int zero_crossing_index = 0;
+
 // Pin Configuration
 const int ledcPin = 26;
 
 // LEDC Configuration
-const int ledcChannel = 0;
+// const int ledcChannel = 0;  // Удалено: больше не нужно в новом API
 const int ledcResolution = 8;
 const int ledcFreq = 100000; // 100 kHz
 
@@ -57,7 +63,7 @@ uint32_t crossing_delta_count = 0;
 void IRAM_ATTR onTimer() {
     phase_accumulator += phase_increment;
     uint8_t index = phase_accumulator >> 24;
-    ledcWrite(ledcChannel, sin_lut[index]);
+    ledcWrite(ledcPin, sin_lut[index]);  // Изменено: используем pin вместо channel
 }
 
 void setup_i2s_adc() {
@@ -112,6 +118,8 @@ void setup() {
     }
 
     display.setRotation(2);
+    memset(signal_graph_buffer, 0, sizeof(signal_graph_buffer));
+    memset(zero_crossing_buffer, false, sizeof(zero_crossing_buffer));
 
     // Generate sine lookup table
     for (int i = 0; i < 256; i++) {
@@ -119,17 +127,13 @@ void setup() {
         sin_lut[i] = (uint8_t)((sin(angle) + 1.0) * 0.5 * 255.0);
     }
 
-    // Configure LEDC
-    ledcSetup(ledcChannel, ledcFreq, ledcResolution);
-    ledcAttachPin(ledcPin, ledcChannel);
+    // Configure LEDC (новый API)
+    ledcAttach(ledcPin, ledcFreq, ledcResolution);
 
-    // Configure Timer
-    // APB_CLK is 80MHz, prescaler of 80 gives 1MHz timer clock
-    timer = timerBegin(0, 80, true);
-    timerAttachInterrupt(timer, &onTimer, true);
-    // Set timer to fire at the configured sampling frequency
-    timerAlarmWrite(timer, 1000000 / sampling_frequency, true);
-    timerAlarmEnable(timer);
+    // Configure Timer (новый API)
+    timer = timerBegin(1000000);  // Устанавливаем частоту таймера 1MHz
+    timerAttachInterrupt(timer, &onTimer);   // Убран параметр edge
+    timerAlarm(timer, 1000000 / sampling_frequency, true, 0);  // Интервал для достижения sampling_frequency
 
     setup_i2s_adc();
 }
@@ -151,6 +155,11 @@ void loop() {
                 if (sample > max_sample_value) max_sample_value = sample;
                 total_sample_value += sample;
 
+                // Store sample for graph
+                signal_graph_buffer[signal_graph_index] = sample;
+                zero_crossing_buffer[signal_graph_index] = false;
+                signal_graph_index = (signal_graph_index + 1) % SCREEN_WIDTH;
+
                 // Frequency detection with hysteresis
                 uint16_t signal_range = (last_max_value > last_min_value) ? (last_max_value - last_min_value) : 0;
                 uint16_t hysteresis = signal_range / 5;
@@ -161,10 +170,15 @@ void loop() {
 
                 if (!signal_was_high && sample > upper_threshold) {
                     signal_was_high = true;
+                    // Check minimum time between crossings (200 μs = 4 samples at 20kHz)
                     if (last_crossing_time > 0) {
                         uint32_t delta = current_absolute_sample - last_crossing_time;
-                        total_crossing_delta += delta;
-                        crossing_delta_count++;
+                        if (delta >= 4) { // 200 μs minimum
+                            total_crossing_delta += delta;
+                            crossing_delta_count++;
+                            // Mark zero crossing in buffer
+                            zero_crossing_buffer[(signal_graph_index - 1 + SCREEN_WIDTH) % SCREEN_WIDTH] = true;
+                        }
                     }
                     last_crossing_time = current_absolute_sample;
                 } else if (signal_was_high && sample < lower_threshold) {
@@ -206,6 +220,37 @@ void loop() {
             display.setTextColor(SSD1306_WHITE);
             display.setCursor(0, 0);
             display.printf("%u %u %.1f", min_sample_value, max_sample_value, frequency);
+
+            // Draw graph
+            int graph_y = 10;
+            int graph_height = SCREEN_HEIGHT - graph_y;
+
+            for (int i = 0; i < SCREEN_WIDTH - 1; i++) {
+                int read_idx1 = (signal_graph_index + i) % SCREEN_WIDTH;
+                int read_idx2 = (signal_graph_index + i + 1) % SCREEN_WIDTH;
+
+                int y1 = map(signal_graph_buffer[read_idx1], 0, 4096, graph_y + graph_height, graph_y);
+                int y2 = map(signal_graph_buffer[read_idx2], 0, 4096, graph_y + graph_height, graph_y);
+                
+                display.drawLine(i, y1, i + 1, y2, SSD1306_WHITE);
+            }
+
+            // Draw average line
+            int avg_y = map((int)last_avg_value, 0, 4096, graph_y + graph_height, graph_y);
+            for (int i = 0; i < SCREEN_WIDTH; i += 4) {
+                display.drawPixel(i, avg_y, SSD1306_WHITE);
+            }
+
+            // Draw zero crossings
+            for (int i = 0; i < SCREEN_WIDTH; i++) {
+                int read_idx = (signal_graph_index + i) % SCREEN_WIDTH;
+                if (zero_crossing_buffer[read_idx]) {
+                    int cross_y = map(signal_graph_buffer[read_idx], 0, 4096, graph_y + graph_height, graph_y);
+                    // Draw 3x3 square
+                    display.fillRect(i - 1, cross_y - 1, 3, 3, SSD1306_WHITE);
+                }
+            }
+
             display.display();
             
             // Store values for next second's calculation
