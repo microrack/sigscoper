@@ -9,6 +9,16 @@
 
 #define MAX_CHANNELS 8
 #define SIGNAL_BUFFER_SIZE 128
+#define MEDIAN_FILTER_WINDOW 5
+
+// Режимы триггера
+enum class TriggerMode {
+    FREE,           // Без триггера - непрерывная запись
+    AUTO_RISE,      // Автоматический триггер по нарастающему фронту
+    AUTO_FALL,      // Автоматический триггер по спадающему фронту
+    FIXED_RISE,     // Фиксированный триггер по нарастающему фронту
+    FIXED_FALL      // Фиксированный триггер по спадающему фронту
+};
 
 // Структура статистики для одного пина
 struct SignalStats {
@@ -26,11 +36,18 @@ struct SignalStats {
     uint64_t total_crossing_delta;
     uint32_t crossing_delta_count;
     
+    // Для медианного фильтра
+    uint16_t median_buffer[MEDIAN_FILTER_WINDOW];
+    size_t median_index;
+    bool median_initialized;
+    
     SignalStats() : min_value(UINT16_MAX), max_value(0), avg_value(0), 
                    frequency(0), sample_count(0), total_value(0), 
                    initialized(false), signal_was_high(false), 
                    last_crossing_time(0), total_crossing_delta(0), 
-                   crossing_delta_count(0) {}
+                   crossing_delta_count(0), median_index(0), median_initialized(false) {
+        memset(median_buffer, 0, sizeof(median_buffer));
+    }
 };
 
 class Signal {
@@ -51,6 +68,19 @@ private:
     bool running_;
     bool stop_requested_;
     
+    // Trigger configuration
+    TriggerMode trigger_mode_;
+    uint16_t trigger_level_;
+    bool trigger_enabled_;
+    bool trigger_armed_;
+    bool trigger_fired_;
+    size_t trigger_position_;
+    
+    // Auto trigger level calculation
+    uint64_t auto_trigger_sum_;
+    uint32_t auto_trigger_count_;
+    uint16_t auto_trigger_level_;
+    
     // Data storage
     SignalStats stats_[MAX_CHANNELS];
     uint16_t signal_buffers_[MAX_CHANNELS][SIGNAL_BUFFER_SIZE];
@@ -61,12 +91,16 @@ private:
     void read_task();
     void process_sample(size_t channel_index, uint16_t sample);
     void calculate_frequency(SignalStats& stats, uint16_t sample, uint32_t absolute_sample_count);
+    uint16_t apply_median_filter(SignalStats& stats, uint16_t sample);
+    bool check_trigger(uint16_t sample, uint16_t prev_sample);
+    void reset_trigger();
+    void update_auto_trigger_level(uint16_t sample);
     
 public:
     Signal(const adc_channel_t* channels, size_t channel_count);
     ~Signal();
     
-    bool start();
+    bool start(TriggerMode trigger_mode = TriggerMode::AUTO_RISE, uint16_t trigger_level = 2048);
     void stop();
     void reset_stats();
     
@@ -75,6 +109,9 @@ public:
     
     size_t get_channel_count() const { return channel_count_; }
     bool is_running() const { return running_; }
+    bool is_trigger_fired() const { return trigger_fired_; }
+    size_t get_trigger_position() const { return trigger_position_; }
+    uint16_t get_auto_trigger_level() const { return auto_trigger_level_; }
     
     static constexpr size_t get_max_channels() { return MAX_CHANNELS; }
 }; 

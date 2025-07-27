@@ -74,8 +74,8 @@ void setup() {
     signal_monitor = new Signal(channels, 1);
     
     if (signal_monitor) {
-        Serial.println("Starting signal monitoring...");
-        signal_monitor->start();
+        Serial.println("Starting signal monitoring with AUTO_RISE trigger...");
+        signal_monitor->start(TriggerMode::AUTO_RISE, 2048);
     }
 }
 
@@ -103,9 +103,13 @@ void loop() {
             display.printf("Min:%u Max:%u", stats.min_value, stats.max_value);
             display.setCursor(0, 10);
             display.printf("Avg:%.1f Freq:%.1f Hz", stats.avg_value, stats.frequency);
+            display.setCursor(0, 20);
+            display.printf("Trigger: %s", signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT");
+            display.setCursor(0, 30);
+            display.printf("Auto Level: %u", signal_monitor->get_auto_trigger_level());
 
             // Рисуем график
-            int graph_y = 20;
+            int graph_y = 40;
             int graph_height = SCREEN_HEIGHT - graph_y;
 
             for (int i = 0; i < SCREEN_WIDTH - 1; i++) {

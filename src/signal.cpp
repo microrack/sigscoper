@@ -3,10 +3,14 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 #include <cstring>
+#include <algorithm>
 
 Signal::Signal(const adc_channel_t* channels, size_t channel_count) 
     : channel_count_(0), adc_handle_(nullptr), read_task_handle_(nullptr),
-      running_(false), stop_requested_(false) {
+      running_(false), stop_requested_(false), trigger_mode_(TriggerMode::FREE),
+      trigger_level_(2048), trigger_enabled_(false), trigger_armed_(false),
+      trigger_fired_(false), trigger_position_(0), auto_trigger_sum_(0),
+      auto_trigger_count_(0), auto_trigger_level_(2048) {
     
     // Ограничиваем количество каналов
     if (channel_count > MAX_CHANNELS) {
@@ -86,10 +90,23 @@ Signal::~Signal() {
     }
 }
 
-bool Signal::start() {
+bool Signal::start(TriggerMode trigger_mode, uint16_t trigger_level) {
     if (running_ || channel_count_ == 0) {
         return false;
     }
+    
+    // Настраиваем триггер
+    trigger_mode_ = trigger_mode;
+    trigger_level_ = trigger_level;
+    trigger_enabled_ = (trigger_mode != TriggerMode::FREE);
+    trigger_armed_ = trigger_enabled_;
+    trigger_fired_ = false;
+    trigger_position_ = 0;
+    
+    // Сбрасываем счетчики для автоматического уровня триггера
+    auto_trigger_sum_ = 0;
+    auto_trigger_count_ = 0;
+    auto_trigger_level_ = trigger_level; // Начальное значение
     
     // Конфигурация ADC continuous
     adc_continuous_handle_cfg_t adc_config = {
@@ -147,7 +164,7 @@ bool Signal::start() {
     // Разблокируем задачу чтения
     xSemaphoreGive((SemaphoreHandle_t)start_semaphore_);
     
-    Serial.println("Signal monitoring started");
+    Serial.printf("Signal monitoring started with trigger mode: %d\n", static_cast<int>(trigger_mode));
     return true;
 }
 
@@ -173,7 +190,41 @@ void Signal::reset_stats() {
         for (size_t i = 0; i < channel_count_; i++) {
             stats_[i] = SignalStats(); // Сброс в конструктор по умолчанию
         }
+        reset_trigger();
         xSemaphoreGive((SemaphoreHandle_t)mutex_);
+    }
+}
+
+void Signal::reset_trigger() {
+    trigger_fired_ = false;
+    trigger_position_ = 0;
+    trigger_armed_ = trigger_enabled_;
+    
+    // Сбрасываем счетчики для автоматического уровня триггера
+    auto_trigger_sum_ = 0;
+    auto_trigger_count_ = 0;
+    auto_trigger_level_ = trigger_level_;
+    
+    // Очищаем буферы
+    for (size_t i = 0; i < channel_count_; i++) {
+        buffer_indices_[i] = 0;
+        memset(signal_buffers_[i], 0, sizeof(signal_buffers_[i]));
+    }
+}
+
+void Signal::update_auto_trigger_level(uint16_t sample) {
+    // Обновляем среднее значение для автоматического уровня триггера
+    auto_trigger_sum_ += sample;
+    auto_trigger_count_++;
+    
+    // Вычисляем новое среднее значение
+    if (auto_trigger_count_ > 0) {
+        auto_trigger_level_ = static_cast<uint16_t>(auto_trigger_sum_ / auto_trigger_count_);
+    }
+    
+    // Для AUTO режимов используем вычисленный уровень
+    if (trigger_mode_ == TriggerMode::AUTO_RISE || trigger_mode_ == TriggerMode::AUTO_FALL) {
+        trigger_level_ = auto_trigger_level_;
     }
 }
 
@@ -211,6 +262,11 @@ bool Signal::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
         return false;
     }
     
+    // Если триггер включен и еще не сработал, возвращаем ошибку
+    if (trigger_enabled_ && !trigger_fired_) {
+        return false;
+    }
+    
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
         size_t copy_size = (size < SIGNAL_BUFFER_SIZE) ? size : SIGNAL_BUFFER_SIZE;
         size_t start_idx = buffer_indices_[index];
@@ -236,6 +292,9 @@ void Signal::read_task_wrapper(void* parameter) {
 void Signal::read_task() {
     uint8_t adc_read_buffer[CONV_FRAME_SIZE];
     uint32_t total_sample_count = 0;
+    uint16_t prev_sample = 0;
+    bool first_sample = true;
+    size_t samples_after_trigger = 0;
     
     while (true) {
         // Ждем сигнала для начала работы
@@ -243,6 +302,9 @@ void Signal::read_task() {
         
         // Сбрасываем счетчик при каждом запуске
         total_sample_count = 0;
+        first_sample = true;
+        samples_after_trigger = 0;
+        reset_trigger();
         
         while (!stop_requested_) {
             uint32_t current_bytes_read;
@@ -267,9 +329,46 @@ void Signal::read_task() {
                     }
                     
                     if (channel_index < channel_count_) {
-                        process_sample(channel_index, p->type1.data);
+                        uint16_t current_sample = p->type1.data;
+                        
+                        // Обновляем автоматический уровень триггера для первого канала
+                        if (channel_index == 0) {
+                            update_auto_trigger_level(current_sample);
+                        }
+                        
+                        // Проверяем триггер только для первого канала
+                        if (channel_index == 0) {
+                            if (!first_sample && trigger_enabled_ && trigger_armed_) {
+                                if (check_trigger(current_sample, prev_sample)) {
+                                    trigger_fired_ = true;
+                                    trigger_position_ = SIGNAL_BUFFER_SIZE / 2;
+                                    trigger_armed_ = false;
+                                    samples_after_trigger = 0;
+                                }
+                            }
+                            prev_sample = current_sample;
+                            first_sample = false;
+                        }
+                        
+                        // Всегда обрабатываем сэмпл (записываем в буфер)
+                        process_sample(channel_index, current_sample);
                         total_sample_count++;
+                        
+                        // Если триггер сработал, считаем сэмплы после триггера
+                        if (trigger_fired_) {
+                            samples_after_trigger++;
+                            
+                            // Если записали половину буфера после триггера, останавливаем запись
+                            if (samples_after_trigger >= SIGNAL_BUFFER_SIZE / 2) {
+                                break;
+                            }
+                        }
                     }
+                }
+                
+                // Если триггер сработал и буфер дописан, выходим из цикла
+                if (trigger_fired_ && samples_after_trigger >= SIGNAL_BUFFER_SIZE / 2) {
+                    break;
                 }
             } else if (ret == ESP_ERR_TIMEOUT) {
                 // Нормальный timeout, продолжаем
@@ -284,6 +383,26 @@ void Signal::read_task() {
     }
 }
 
+bool Signal::check_trigger(uint16_t sample, uint16_t prev_sample) {
+    switch (trigger_mode_) {
+        case TriggerMode::AUTO_RISE:
+            return (prev_sample < trigger_level_) && (sample >= trigger_level_);
+            
+        case TriggerMode::AUTO_FALL:
+            return (prev_sample > trigger_level_) && (sample <= trigger_level_);
+            
+        case TriggerMode::FIXED_RISE:
+            return (prev_sample < trigger_level_) && (sample >= trigger_level_);
+            
+        case TriggerMode::FIXED_FALL:
+            return (prev_sample > trigger_level_) && (sample <= trigger_level_);
+            
+        case TriggerMode::FREE:
+        default:
+            return false;
+    }
+}
+
 void Signal::process_sample(size_t channel_index, uint16_t sample) {
     if (channel_index >= channel_count_) {
         return;
@@ -292,21 +411,49 @@ void Signal::process_sample(size_t channel_index, uint16_t sample) {
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
         SignalStats& stat = stats_[channel_index];
         
-        // Обновляем статистику
-        if (sample < stat.min_value) stat.min_value = sample;
-        if (sample > stat.max_value) stat.max_value = sample;
-        stat.total_value += sample;
+        // Применяем медианный фильтр к сэмплу
+        uint16_t filtered_sample = apply_median_filter(stat, sample);
+        
+        // Обновляем статистику с отфильтрованным сэмплом
+        if (filtered_sample < stat.min_value) stat.min_value = filtered_sample;
+        if (filtered_sample > stat.max_value) stat.max_value = filtered_sample;
+        stat.total_value += filtered_sample;
         stat.sample_count++;
         
-        // Сохраняем в буфер
-        signal_buffers_[channel_index][buffer_indices_[channel_index]] = sample;
+        // Сохраняем отфильтрованный сэмпл в буфер
+        signal_buffers_[channel_index][buffer_indices_[channel_index]] = filtered_sample;
         buffer_indices_[channel_index] = (buffer_indices_[channel_index] + 1) % SIGNAL_BUFFER_SIZE;
         
-        // Вычисляем частоту
-        calculate_frequency(stat, sample, stat.sample_count);
+        // Вычисляем частоту с отфильтрованным сэмплом
+        calculate_frequency(stat, filtered_sample, stat.sample_count);
         
         xSemaphoreGive((SemaphoreHandle_t)mutex_);
     }
+}
+
+uint16_t Signal::apply_median_filter(SignalStats& stats, uint16_t sample) {
+    // Добавляем новый сэмпл в буфер
+    stats.median_buffer[stats.median_index] = sample;
+    stats.median_index = (stats.median_index + 1) % MEDIAN_FILTER_WINDOW;
+    
+    // Если буфер еще не заполнен, возвращаем исходный сэмпл
+    if (!stats.median_initialized && stats.median_index == 0) {
+        stats.median_initialized = true;
+    }
+    
+    if (!stats.median_initialized) {
+        return sample;
+    }
+    
+    // Копируем буфер для сортировки
+    uint16_t temp_buffer[MEDIAN_FILTER_WINDOW];
+    memcpy(temp_buffer, stats.median_buffer, sizeof(stats.median_buffer));
+    
+    // Сортируем буфер
+    std::sort(temp_buffer, temp_buffer + MEDIAN_FILTER_WINDOW);
+    
+    // Возвращаем медианное значение (средний элемент)
+    return temp_buffer[MEDIAN_FILTER_WINDOW / 2];
 }
 
 void Signal::calculate_frequency(SignalStats& stats, uint16_t sample, uint32_t absolute_sample_count) {
