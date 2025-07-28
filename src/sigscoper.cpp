@@ -72,19 +72,7 @@ Sigscoper::~Sigscoper() {
     }
 }
 
-bool Sigscoper::start(const SigscoperConfig& config) {
-    if (running_) {
-        return false;
-    }
-    
-    // Check configuration
-    if (config.channel_count == 0 || config.channel_count > MAX_CHANNELS) {
-        return false;
-    }
-    
-    // Save configuration
-    config_ = config;
-    
+bool Sigscoper::begin() {
     // Create semaphores
     mutex_ = xSemaphoreCreateMutex();
     start_semaphore_ = xSemaphoreCreateBinary();
@@ -103,6 +91,36 @@ bool Sigscoper::start(const SigscoperConfig& config) {
     if (err != ESP_OK) {
         return false;
     }
+    
+    // Create task
+    BaseType_t task_created = xTaskCreate(
+        read_task_wrapper,
+        "signal_read_task",
+        4096,
+        this,
+        5,
+        &read_task_handle_
+    );
+    
+    if (task_created != pdPASS) {
+        return false;
+    }
+    
+    return true;
+}
+
+bool Sigscoper::start(const SigscoperConfig& config) {
+    if (running_) {
+        return false;
+    }
+    
+    // Check configuration
+    if (config.channel_count == 0 || config.channel_count > MAX_CHANNELS) {
+        return false;
+    }
+    
+    // Save configuration
+    config_ = config;
     
     // Configure patterns for all channels
     adc_digi_pattern_config_t adc_pattern[MAX_CHANNELS];
@@ -125,7 +143,7 @@ bool Sigscoper::start(const SigscoperConfig& config) {
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
     };
     
-    err = adc_continuous_config(adc_handle_, &dig_cfg);
+    esp_err_t err = adc_continuous_config(adc_handle_, &dig_cfg);
     if (err != ESP_OK) {
         adc_continuous_deinit(adc_handle_);
         adc_handle_ = nullptr;
@@ -165,20 +183,6 @@ bool Sigscoper::start(const SigscoperConfig& config) {
     memset(median_buffer_, 0, sizeof(median_buffer_));
     median_index_ = 0;
     median_initialized_ = false;
-    
-    // Create task
-    BaseType_t task_created = xTaskCreate(
-        read_task_wrapper,
-        "signal_read_task",
-        4096,
-        this,
-        5,
-        &read_task_handle_
-    );
-    
-    if (task_created != pdPASS) {
-        return false;
-    }
     
     running_ = true;
     stop_requested_ = false;

@@ -97,6 +97,7 @@ public:
     Sigscoper(size_t buffer_size);
     ~Sigscoper();
     
+    bool begin();
     bool start(const SigscoperConfig& config);
     void stop();
     void restart();

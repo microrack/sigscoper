@@ -49,6 +49,12 @@ SigscoperStats stats;
 void setup() {
     Serial.begin(115200);
     
+    // Initialize Sigscoper
+    if (!sigscoper.begin()) {
+        Serial.println("Failed to initialize Sigscoper");
+        return;
+    }
+    
     // Configure signal acquisition
     config.channel_count = 1;
     config.channels[0] = ADC_CHANNEL_0;  // GPIO36
@@ -132,6 +138,7 @@ struct SigscoperStats {
 ### Sigscoper Class Methods
 
 #### Configuration
+- `bool begin()` - Initialize Sigscoper (create mutexes, semaphores, ADC handle, and start read task)
 - `bool start(const SigscoperConfig& config)` - Start signal acquisition
 - `void stop()` - Stop signal acquisition
 - `void restart()` - Restart with current configuration

@@ -10,6 +10,12 @@ void setup() {
     
     Serial.println("Sigscoper Basic Usage Example");
     
+    // Initialize Sigscoper
+    if (!sigscoper.begin()) {
+        Serial.println("Failed to initialize Sigscoper");
+        return;
+    }
+    
     // Configure signal acquisition
     config.channel_count = 1;
     config.channels[0] = ADC_CHANNEL_0;  // GPIO36
