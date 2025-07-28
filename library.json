@@ -1,0 +1,22 @@
+{
+  "name": "Sigscoper",
+  "version": "1.0.0",
+  "description": "ESP32 Signal Oscilloscope Library",
+  "keywords": "esp32,oscilloscope,signal,adc,trigger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microrack/sigscoper.git"
+  },
+  "authors": [
+    {
+      "name": "MICRORACK inc.",
+      "url": "https://microrack.org/"
+    }
+  ],
+  "license": "CC-BY-SA-4.0",
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "build": {
+    "flags": ["-DCORE_DEBUG_LEVEL=0"]
+  }
+} 
