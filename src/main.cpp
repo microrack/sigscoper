@@ -147,11 +147,15 @@ void loop() {
     */
 
     int graph_y = 40;
-    for (int i = 0; i < SCREEN_WIDTH; i++) {
-        // map range 900 to 2400 to 60 to 20
-        int y = map(buffer[i], 600, 2400, 64, 10);
-        if (y >= 0 && y < SCREEN_HEIGHT) {
-            display.drawPixel(i, y, SSD1306_WHITE);
+    for (int i = 0; i < SCREEN_WIDTH - 1; i++) {
+        // map range 600 to 2400 to 64 to 10
+        int y1 = map(buffer[i], 400, 2400, 64, 10);
+        int y2 = map(buffer[i + 1], 400, 2400, 64, 10);
+        
+        if (y1 >= 0 && y1 < SCREEN_HEIGHT && y2 >= 0 && y2 < SCREEN_HEIGHT) {
+            // Рисуем линию с шириной 2 пикселя
+            display.drawLine(i, y1, i + 1, y2, SSD1306_WHITE);
+            display.drawLine(i, y1 + 1, i + 1, y2 + 1, SSD1306_WHITE);
         }
     }
     
