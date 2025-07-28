@@ -102,9 +102,9 @@ void setup() {
     SignalConfig signal_config;
     signal_config.channel_count = 1;
     signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
-    signal_config.trigger_mode = TriggerMode::AUTO_RISE;
+    signal_config.trigger_mode = TriggerMode::FREE;
     signal_config.trigger_level = 0;
-    signal_config.sampling_rate = 1000;
+    signal_config.sampling_rate = 100;
     
     // Создаем монитор сигнала
     if (!signal_monitor.start(signal_config)) {
@@ -123,7 +123,7 @@ void loop() {
         last_trigger_wait = millis();
     }
 
-    if(millis() - last_trigger_wait > 1000 || signal_monitor.is_ready()) {
+    if(millis() - last_trigger_wait > 1000 || signal_monitor.is_ready() || true) {
         signal_monitor.get_stats(0, &stats);
         signal_monitor.get_buffer(0, SCREEN_WIDTH, buffer);
         signal_monitor.restart();
