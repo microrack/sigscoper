@@ -151,7 +151,7 @@ void Trigger::reset() {
 
 void Trigger::update_auto_level(uint16_t sample) {
     // Обновляем среднее значение для автоматического уровня триггера
-    auto_level_ = sample * 0.001 + auto_level_ * 0.999;
+    auto_level_ = sample * 0.0002 + auto_level_ * 0.9998;
     
     // Для AUTO режимов используем вычисленный уровень
     if (mode_ == TriggerMode::AUTO_RISE || mode_ == TriggerMode::AUTO_FALL) {

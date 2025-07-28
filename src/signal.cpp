@@ -180,6 +180,7 @@ bool Signal::start(const SignalConfig& config) {
 void Signal::restart() {
     running_ = true;
     stop_requested_ = false;
+    is_ready_ = false;
     trigger_.reset();
     xSemaphoreGive((SemaphoreHandle_t)start_semaphore_);
 }
@@ -205,11 +206,6 @@ void Signal::stop() {
 
 bool Signal::get_stats(size_t index, SignalStats* stats) const {
     if (!stats || index >= config_.channel_count) {
-        return false;
-    }
-    
-    // Если буфер не готов, возвращаем false
-    if (!is_ready_) {
         return false;
     }
 
@@ -334,11 +330,6 @@ float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const
 
 bool Signal::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
     if (!buffer || index >= config_.channel_count || size == 0) {
-        return false;
-    }
-    
-    // Если буфер не готов, возвращаем false
-    if (!is_ready_) {
         return false;
     }
     

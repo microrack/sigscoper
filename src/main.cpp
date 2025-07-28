@@ -28,7 +28,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define TIMER_RESOLUTION_HZ   (1000000) // 1MHz
 #define TIMER_INTERVAL_MS     (1000)    // 1ms
 
-Signal* signal_monitor = nullptr;
+Signal signal_monitor;
 gptimer_handle_t gptimer = NULL;
 
 bool IRAM_ATTR onTimer(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx) {
@@ -102,18 +102,13 @@ void setup() {
     SignalConfig signal_config;
     signal_config.channel_count = 1;
     signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
-    signal_config.trigger_mode = TriggerMode::AUTO_FALL;
-    signal_config.trigger_level = 1000;
+    signal_config.trigger_mode = TriggerMode::AUTO_RISE;
+    signal_config.trigger_level = 0;
     
     // Создаем монитор сигнала
-    signal_monitor = new Signal();
-    if (signal_monitor) {
-        Serial.println("Starting signal monitoring with AUTO_RISE trigger...");
-        if (signal_monitor->start(signal_config)) {
-            Serial.println("Signal monitoring started successfully");
-        } else {
-            Serial.println("Failed to start signal monitoring");
-        }
+    if (!signal_monitor.start(signal_config)) {
+        Serial.println("Failed to start signal monitoring");
+        for(;;);
     }
 }
 
@@ -121,12 +116,19 @@ SignalStats stats;
 uint16_t buffer[SCREEN_WIDTH];
 
 void loop() {
-    static uint32_t last_update = 0;
+    static uint32_t last_trigger_wait = millis();
 
-    signal_monitor->get_stats(0, &stats);
-    if(signal_monitor->get_buffer(0, SCREEN_WIDTH, buffer)) {
-        last_update++;
-        signal_monitor->restart();
+    // if signal_monitor is not ready,
+    // skip, and after 50 ms get stats and buffer
+    if(!signal_monitor.is_ready() && last_trigger_wait == 0) {
+        last_trigger_wait = millis();
+    }
+
+    if(millis() - last_trigger_wait > 100 || signal_monitor.is_ready()) {
+        signal_monitor.get_stats(0, &stats);
+        signal_monitor.get_buffer(0, SCREEN_WIDTH, buffer);
+        signal_monitor.restart();
+        last_trigger_wait = 0;
     }
 
     display.clearDisplay();
@@ -139,10 +141,9 @@ void loop() {
     );
     /*
     display.setCursor(0, 10);
-    display.printf("T: %s %u %u",
-        signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT",
-        last_update,
-        signal_monitor->get_trigger_threshold()
+    display.printf("T: %s %u",
+        signal_monitor.is_trigger_fired() ? "FIRED" : "WAIT",
+        signal_monitor.get_trigger_threshold()
     );
     */
 
@@ -161,7 +162,7 @@ void loop() {
 
     // draw trigger level using dotted line
     int trigger_level =
-        map(signal_monitor->get_trigger_threshold(), 400, 2400, 64, 10);
+        map(signal_monitor.get_trigger_threshold(), 400, 2400, 64, 10);
     for(int i = 0; i < SCREEN_WIDTH; i += 2) {
         display.drawPixel(i, trigger_level, SSD1306_WHITE);
     }
