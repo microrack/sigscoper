@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "MICRORACK"
+    given-names: "inc."
+    website: "https://microrack.org/"
+title: "Sigscoper - ESP32 Signal Oscilloscope Library"
+version: 1.0.0
+doi: 10.5281/zenodo.123456789
+date-released: 2025-01-XX
+url: "https://github.com/microrack/sigscoper"
+repository-code: "https://github.com/microrack/sigscoper"
+license: CC-BY-SA-4.0
+keywords:
+  - "esp32"
+  - "oscilloscope"
+  - "signal"
+  - "adc"
+  - "trigger"
+  - "acquisition"
+  - "analysis"
+  - "embedded"
+  - "real-time"
+abstract: "A powerful signal oscilloscope library for ESP32 that provides real-time signal acquisition, triggering, and analysis capabilities. Features include advanced triggering with multiple modes, hysteresis support, decimation, median filtering, frequency calculation, and multi-channel support." 

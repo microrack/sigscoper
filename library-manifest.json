@@ -1,8 +1,16 @@
 {
   "name": "Sigscoper",
   "version": "1.0.0",
-  "description": "ESP32 Signal Oscilloscope Library",
-  "keywords": "esp32,oscilloscope,signal,adc,trigger",
+  "description": "ESP32 Signal Oscilloscope Library - Real-time signal acquisition, triggering, and analysis for ESP32",
+  "keywords": [
+    "esp32",
+    "oscilloscope", 
+    "signal",
+    "adc",
+    "trigger",
+    "acquisition",
+    "analysis"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/microrack/sigscoper.git"
@@ -14,10 +22,14 @@
     }
   ],
   "license": "CC-BY-SA-4.0",
+  "homepage": "https://github.com/microrack/sigscoper",
   "frameworks": ["arduino", "espidf"],
   "platforms": ["espressif32"],
   "build": {
     "flags": ["-DCORE_DEBUG_LEVEL=0"]
   },
-  "examples": "examples.json"
+  "examples": "examples.json",
+  "export": {
+    "include": "include"
+  }
 } 

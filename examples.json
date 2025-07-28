@@ -1,0 +1,12 @@
+{
+  "examples": [
+    {
+      "name": "Basic Usage",
+      "description": "Basic signal acquisition and analysis example",
+      "path": "examples/basic_usage",
+      "files": [
+        "basic_usage.ino"
+      ]
+    }
+  ]
+} 
