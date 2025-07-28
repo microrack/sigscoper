@@ -11,7 +11,7 @@
 #include "trigger.h"
 
 #define MAX_CHANNELS 8
-#define SIGNAL_BUFFER_SIZE 256
+#define SIGNAL_BUFFER_SIZE 128
 #define TRIGGER_POSITON 64
 #define MEDIAN_FILTER_WINDOW 3
 #define SAMPLE_RATE 20000
@@ -37,11 +37,13 @@ struct SignalConfig {
     adc_channel_t channels[MAX_CHANNELS];
     TriggerMode trigger_mode;
     uint16_t trigger_level;
+    uint32_t sampling_rate;
     
     SignalConfig() {
         channel_count = 0;
         trigger_mode = TriggerMode::FREE;
         trigger_level = 2048;
+        sampling_rate = 20000;
         memset(channels, 0, sizeof(channels));
     }
 };
@@ -65,6 +67,8 @@ private:
     bool running_;
     bool stop_requested_;
     bool is_ready_;
+    uint32_t decimation_factor_;
+    uint32_t sample_counter_;
     
     // Данные
     uint16_t signal_buffers_[MAX_CHANNELS][SIGNAL_BUFFER_SIZE];

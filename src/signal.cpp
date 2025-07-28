@@ -29,6 +29,8 @@ Signal::Signal(size_t buffer_size) : trigger_(buffer_size, TRIGGER_POSITON) {
     running_ = false;
     stop_requested_ = false;
     is_ready_ = false;
+    decimation_factor_ = 1;
+    sample_counter_ = 0;
     
     // Инициализация данных
     memset(signal_buffers_, 0, sizeof(signal_buffers_));
@@ -116,7 +118,9 @@ bool Signal::start(const SignalConfig& config) {
     adc_continuous_config_t dig_cfg = {
         .pattern_num = static_cast<uint32_t>(config_.channel_count),
         .adc_pattern = adc_pattern,
-        .sample_freq_hz = SAMPLE_RATE,
+        .sample_freq_hz = (config_.sampling_rate < 20000) ? 
+            ((20000 + config_.sampling_rate - 1) / config_.sampling_rate) * config_.sampling_rate : 
+            config_.sampling_rate,
         .conv_mode = ADC_CONV_SINGLE_UNIT_1,
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
     };
@@ -148,6 +152,14 @@ bool Signal::start(const SignalConfig& config) {
     
     // Сбрасываем состояние готовности
     is_ready_ = false;
+    
+    // Вычисляем фактор децимации
+    if (config_.sampling_rate < 20000) {
+        decimation_factor_ = ((20000 + config_.sampling_rate - 1) / config_.sampling_rate);
+    } else {
+        decimation_factor_ = 1;
+    }
+    sample_counter_ = 0;
     
     // Сбрасываем медианный фильтр
     memset(median_buffer_, 0, sizeof(median_buffer_));
@@ -317,11 +329,13 @@ float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const
         }
     }
     
-    // Вычисляем частоту
+    // Вычисляем частоту с учетом децимации
     if (crossing_count > 1 && total_delta > 0) {
         float avg_delta = static_cast<float>(total_delta) / (crossing_count - 1);
         if (avg_delta > 0) {
-            return static_cast<float>(SAMPLE_RATE) / avg_delta;
+            // Учитываем децимацию: эффективная частота дискретизации
+            float effective_sample_rate = static_cast<float>(config_.sampling_rate);
+            return effective_sample_rate / avg_delta;
         }
     }
     
@@ -393,24 +407,28 @@ void Signal::read_task() {
                         uint16_t current_sample = p->type1.data;
                         uint16_t filtered_sample = apply_median_filter(current_sample);
                         
-                        // Проверяем триггер только для первого канала
-                        if (channel_index == 0) {
-                            TriggerState state = trigger_.check_trigger(filtered_sample);
-                            
-                            // Если буфер готов, устанавливаем флаг
-                            if (state.buffer_ready) {
-                                is_ready_ = true;
+                        // Децимация: обрабатываем только каждый N-й сэмпл
+                        sample_counter_++;
+                        if (sample_counter_ >= decimation_factor_) {
+                            // Проверяем триггер только для первого канала на децимированных сэмплах
+                            if (channel_index == 0) {
+                                TriggerState state = trigger_.check_trigger(filtered_sample);
+                                
+                                // Если буфер готов, устанавливаем флаг
+                                if (state.buffer_ready) {
+                                    is_ready_ = true;
+                                }
+                                
+                                // Если нужно остановить работу
+                                if (!state.continue_work) {
+                                    stop_requested_ = true;
+                                    break; // Выходим из цикла чтения
+                                }
                             }
                             
-                            // Если нужно остановить работу
-                            if (!state.continue_work) {
-                                stop_requested_ = true;
-                                break; // Выходим из цикла чтения
-                            }
+                            process_sample(channel_index, filtered_sample);
+                            sample_counter_ = 0;
                         }
-                        
-                        // Всегда обрабатываем сэмпл (записываем в буфер)
-                        process_sample(channel_index, filtered_sample);
                         total_sample_count++;
                     }
                 }

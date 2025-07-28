@@ -104,6 +104,7 @@ void setup() {
     signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
     signal_config.trigger_mode = TriggerMode::AUTO_RISE;
     signal_config.trigger_level = 0;
+    signal_config.sampling_rate = 1000;
     
     // Создаем монитор сигнала
     if (!signal_monitor.start(signal_config)) {
@@ -118,13 +119,11 @@ uint16_t buffer[SCREEN_WIDTH];
 void loop() {
     static uint32_t last_trigger_wait = millis();
 
-    // if signal_monitor is not ready,
-    // skip, and after 50 ms get stats and buffer
     if(!signal_monitor.is_ready() && last_trigger_wait == 0) {
         last_trigger_wait = millis();
     }
 
-    if(millis() - last_trigger_wait > 100 || signal_monitor.is_ready()) {
+    if(millis() - last_trigger_wait > 1000 || signal_monitor.is_ready()) {
         signal_monitor.get_stats(0, &stats);
         signal_monitor.get_buffer(0, SCREEN_WIDTH, buffer);
         signal_monitor.restart();
