@@ -25,8 +25,5 @@
   "homepage": "https://github.com/microrack/sigscoper",
   "frameworks": ["arduino", "espidf"],
   "platforms": ["espressif32"],
-  "build": {
-    "flags": ["-DCORE_DEBUG_LEVEL=0"]
-  },
   "examples": "examples.json"
 } 
