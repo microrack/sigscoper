@@ -4,7 +4,7 @@
 Trigger::Trigger(size_t buffer_size, size_t trigger_position) {
     mode_ = TriggerMode::FREE;
     threshold_ = 2048;
-    hysteresis_ = 200; // Гистерезис по умолчанию
+    hysteresis_ = 200; // Default hysteresis
     armed_ = false;
     fired_ = false;
     ready_to_trigger_ = false;
@@ -14,14 +14,14 @@ Trigger::Trigger(size_t buffer_size, size_t trigger_position) {
     first_sample_ = true;
     trigger_position_ = trigger_position;
     
-    // Автоматический уровень триггера
+    // Automatic trigger level
     auto_level_ = 2048;
 }
 
 void Trigger::start(TriggerMode mode, uint16_t threshold) {
     mode_ = mode;
     threshold_ = threshold;
-    hysteresis_ = threshold / 40; // Гистерезис как 2.5% от порога
+    hysteresis_ = threshold / 40; // Hysteresis as 2.5% of threshold
     armed_ = (mode_ != TriggerMode::FREE);
     fired_ = false;
     ready_to_trigger_ = false;
@@ -29,12 +29,12 @@ void Trigger::start(TriggerMode mode, uint16_t threshold) {
     prev_sample_ = threshold;
     first_sample_ = true;
     
-    // Сбрасываем счетчики для автоматического уровня триггера
+    // Reset automatic trigger level counters
     auto_level_ = threshold;
 }
 
 TriggerState Trigger::check_trigger(uint16_t sample) {
-    // Если это первый сэмпл, возвращаем специальное состояние
+    // If this is the first sample, return special state
     if (first_sample_) {
         first_sample_ = false;
         prev_sample_ = sample;
@@ -43,14 +43,14 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
         return {false, true};
     }
     
-    // Обновляем автоматический уровень
+    // Update automatic level
     update_auto_level(sample);
     
-    // Если триггер уже сработал, проверяем состояние записи
+    // If trigger has already fired, check recording state
     if (fired_) {
         samples_after_trigger_++;
 
-        // Если записали половину буфера после триггера
+        // If we've written half the buffer after trigger
         if (samples_after_trigger_ >= buffer_size_) {
             // buffer ready, stop work
             return TriggerState{true, false};
@@ -66,12 +66,12 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
         return TriggerState{false, true};
     }
     
-    // Если триггер еще не сработал, проверяем условия триггера
+    // If trigger hasn't fired yet, check trigger conditions
     bool trigger_condition = false;
     switch (mode_) {
         case TriggerMode::AUTO_RISE:
-            // Для AUTO_RISE: сначала сигнал должен опуститься ниже threshold - hysteresis
-            // потом подняться выше threshold + hysteresis
+            // For AUTO_RISE: first signal must drop below threshold - hysteresis
+            // then rise above threshold + hysteresis
             if (!ready_to_trigger_ && prev_sample_ > threshold_ - hysteresis_ && sample <= threshold_ - hysteresis_) {
                 ready_to_trigger_ = true;
             }
@@ -82,8 +82,8 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
             break;
             
         case TriggerMode::AUTO_FALL:
-            // Для AUTO_FALL: сначала сигнал должен подняться выше threshold + hysteresis
-            // потом опуститься ниже threshold - hysteresis
+            // For AUTO_FALL: first signal must rise above threshold + hysteresis
+            // then drop below threshold - hysteresis
             if (!ready_to_trigger_ && prev_sample_ < threshold_ + hysteresis_ && sample >= threshold_ + hysteresis_) {
                 ready_to_trigger_ = true;
             }
@@ -94,8 +94,8 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
             break;
             
         case TriggerMode::FIXED_RISE:
-            // Для FIXED_RISE: сначала сигнал должен опуститься ниже threshold - hysteresis
-            // потом подняться выше threshold + hysteresis
+            // For FIXED_RISE: first signal must drop below threshold - hysteresis
+            // then rise above threshold + hysteresis
             if (!ready_to_trigger_ && prev_sample_ > threshold_ - hysteresis_ && sample <= threshold_ - hysteresis_) {
                 ready_to_trigger_ = true;
             }
@@ -106,8 +106,8 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
             break;
             
         case TriggerMode::FIXED_FALL:
-            // Для FIXED_FALL: сначала сигнал должен подняться выше threshold + hysteresis
-            // потом опуститься ниже threshold - hysteresis
+            // For FIXED_FALL: first signal must rise above threshold + hysteresis
+            // then drop below threshold - hysteresis
             if (!ready_to_trigger_ && prev_sample_ < threshold_ + hysteresis_ && sample >= threshold_ + hysteresis_) {
                 ready_to_trigger_ = true;
             }
@@ -134,7 +134,7 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
 }
 
 void Trigger::reset_level() {
-    // Сбрасываем только уровень триггера
+    // Reset only trigger level
     first_sample_ = true;
     auto_level_ = threshold_;
 
@@ -150,10 +150,10 @@ void Trigger::reset() {
 }
 
 void Trigger::update_auto_level(uint16_t sample) {
-    // Обновляем среднее значение для автоматического уровня триггера
+    // Update average value for automatic trigger level
     auto_level_ = sample * 0.0002 + auto_level_ * 0.9998;
     
-    // Для AUTO режимов используем вычисленный уровень
+    // For AUTO modes use calculated level
     if (mode_ == TriggerMode::AUTO_RISE || mode_ == TriggerMode::AUTO_FALL) {
         threshold_ = auto_level_;
     }

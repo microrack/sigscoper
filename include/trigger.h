@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 
-// Режимы триггера
+// Trigger modes
 enum class TriggerMode {
     FREE,
     AUTO_RISE,
@@ -12,10 +12,10 @@ enum class TriggerMode {
     FIXED_FALL
 };
 
-// Структура для возврата состояния триггера
+// Structure for returning trigger state
 typedef struct _TriggerState {
-    bool buffer_ready;    // Готов ли буфер к работе через get_buffer и get_stats
-    bool continue_work;   // Нужно ли продолжать работу (если нет, вызывать stop)
+    bool buffer_ready;    // Whether buffer is ready for get_buffer and get_stats
+    bool continue_work;   // Whether to continue work (if not, call stop)
 } TriggerState;
 
 class Trigger {
@@ -32,10 +32,10 @@ private:
     uint16_t prev_sample_;
     bool first_sample_;
     
-    // Автоматический уровень триггера
+    // Automatic trigger level
     float auto_level_;
     
-    // Приватные методы
+    // Private methods
     void update_auto_level(uint16_t sample);
     
 public:
@@ -46,7 +46,7 @@ public:
     void reset_level();
     void reset();
     
-    // Геттеры
+    // Getters
     bool is_fired() const { return fired_; }
     uint16_t get_threshold() const { return threshold_; }
     bool is_armed() const { return armed_; }

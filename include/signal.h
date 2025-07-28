@@ -16,7 +16,7 @@
 #define MEDIAN_FILTER_WINDOW 3
 #define SAMPLE_RATE 20000
 
-// Структура для статистики сигнала
+// Structure for signal statistics
 struct SignalStats {
     uint16_t min_value;
     uint16_t max_value;
@@ -31,7 +31,7 @@ struct SignalStats {
     }
 };
 
-// Структура конфигурации сигнала
+// Signal configuration structure
 struct SignalConfig {
     size_t channel_count;
     adc_channel_t channels[MAX_CHANNELS];
@@ -50,42 +50,42 @@ struct SignalConfig {
 
 class Signal {
 private:
-    // Конфигурация
+    // Configuration
     SignalConfig config_;
     
     // ADC
     adc_continuous_handle_t adc_handle_;
     
-    // Задача
+    // Task
     TaskHandle_t read_task_handle_;
     
-    // Синхронизация
+    // Synchronization
     SemaphoreHandle_t mutex_;
     SemaphoreHandle_t start_semaphore_;
     
-    // Состояние
+    // State
     bool running_;
     bool stop_requested_;
     bool is_ready_;
     uint32_t decimation_factor_;
     uint32_t sample_counter_;
     
-    // Данные
+    // Data
     uint16_t signal_buffers_[MAX_CHANNELS][SIGNAL_BUFFER_SIZE];
     size_t buffer_indices_[MAX_CHANNELS];
     
-    // Триггер
+    // Trigger
     Trigger trigger_;
     
-    // Медианный фильтр
+    // Median filter
     uint16_t median_buffer_[MEDIAN_FILTER_WINDOW];
     size_t median_index_;
     bool median_initialized_;
     
-    // Константы
+    // Constants
     static constexpr size_t CONV_FRAME_SIZE = 1024;
     
-    // Приватные методы
+    // Private methods
     static void read_task_wrapper(void* param);
     void read_task();
     void process_sample(size_t channel_index, uint16_t sample);
@@ -101,14 +101,14 @@ public:
     void stop();
     void restart();
     
-    // Геттеры
+    // Getters
     bool is_running() const { return running_; }
     bool is_trigger_fired() const { return trigger_.is_fired(); }
     uint16_t get_trigger_threshold() const { return trigger_.get_threshold(); }
     size_t get_max_channels() const { return MAX_CHANNELS; }
     bool is_ready() const { return is_ready_; }
     
-    // Работа с данными
+    // Data operations
     bool get_buffer(size_t index, size_t size, uint16_t* buffer) const;
     bool get_stats(size_t index, SignalStats* stats) const;
 }; 

@@ -98,7 +98,7 @@ void setup() {
     
     gptimer_start(gptimer);
     
-    // Создаем конфигурацию сигнала
+    // Create signal configuration
     SignalConfig signal_config;
     signal_config.channel_count = 1;
     signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
@@ -106,7 +106,7 @@ void setup() {
     signal_config.trigger_level = 0;
     signal_config.sampling_rate = 100;
     
-    // Создаем монитор сигнала
+    // Create signal monitor
     if (!signal_monitor.start(signal_config)) {
         Serial.println("Failed to start signal monitoring");
         for(;;);
@@ -153,20 +153,20 @@ void loop() {
         int y2 = map(buffer[i + 1], 400, 2400, 64, 10);
         
         if (y1 >= 0 && y1 < SCREEN_HEIGHT && y2 >= 0 && y2 < SCREEN_HEIGHT) {
-            // Рисуем линию с шириной 2 пикселя
+            // Draw line with 2-pixel width
             display.drawLine(i, y1, i + 1, y2, SSD1306_WHITE);
             display.drawLine(i, y1 + 1, i + 1, y2 + 1, SSD1306_WHITE);
         }
     }
 
-    // draw trigger level using dotted line
+    // Draw trigger level using dotted line
     int trigger_level =
         map(signal_monitor.get_trigger_threshold(), 400, 2400, 64, 10);
     for(int i = 0; i < SCREEN_WIDTH; i += 2) {
         display.drawPixel(i, trigger_level, SSD1306_WHITE);
     }
 
-    // draw tirgger position using dotted line
+    // Draw trigger position using dotted line
     for(int i = 10; i < SCREEN_HEIGHT; i += 2) {
         display.drawPixel(SCREEN_WIDTH / 2, i, SSD1306_WHITE);
     }

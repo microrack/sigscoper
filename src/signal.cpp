@@ -9,34 +9,34 @@ Signal::Signal() : Signal(SIGNAL_BUFFER_SIZE) {
 }
 
 Signal::Signal(size_t buffer_size) : trigger_(buffer_size, TRIGGER_POSITON) {
-    // Инициализация конфигурации
+    // Configuration initialization
     config_.channel_count = 0;
     config_.trigger_mode = TriggerMode::FREE;
     config_.trigger_level = 2048;
     memset(config_.channels, 0, sizeof(config_.channels));
     
-    // Инициализация ADC
+    // ADC initialization
     adc_handle_ = nullptr;
     
-    // Инициализация задачи
+    // Task initialization
     read_task_handle_ = nullptr;
     
-    // Инициализация синхронизации
+    // Synchronization initialization
     mutex_ = nullptr;
     start_semaphore_ = nullptr;
     
-    // Инициализация состояния
+    // State initialization
     running_ = false;
     stop_requested_ = false;
     is_ready_ = false;
     decimation_factor_ = 1;
     sample_counter_ = 0;
     
-    // Инициализация данных
+    // Data initialization
     memset(signal_buffers_, 0, sizeof(signal_buffers_));
     memset(buffer_indices_, 0, sizeof(buffer_indices_));
     
-    // Инициализация медианного фильтра
+    // Median filter initialization
     memset(median_buffer_, 0, sizeof(median_buffer_));
     median_index_ = 0;
     median_initialized_ = false;
@@ -77,15 +77,15 @@ bool Signal::start(const SignalConfig& config) {
         return false;
     }
     
-    // Проверяем конфигурацию
+    // Check configuration
     if (config.channel_count == 0 || config.channel_count > MAX_CHANNELS) {
         return false;
     }
     
-    // Сохраняем конфигурацию
+    // Save configuration
     config_ = config;
     
-    // Создаем семафоры
+    // Create semaphores
     mutex_ = xSemaphoreCreateMutex();
     start_semaphore_ = xSemaphoreCreateBinary();
     
@@ -93,7 +93,7 @@ bool Signal::start(const SignalConfig& config) {
         return false;
     }
     
-    // Настраиваем ADC
+    // Configure ADC
     adc_continuous_handle_cfg_t adc_config = {
         .max_store_buf_size = CONV_FRAME_SIZE * 4,
         .conv_frame_size = CONV_FRAME_SIZE,
@@ -104,7 +104,7 @@ bool Signal::start(const SignalConfig& config) {
         return false;
     }
     
-    // Настраиваем паттерны для всех каналов
+    // Configure patterns for all channels
     adc_digi_pattern_config_t adc_pattern[MAX_CHANNELS];
     for (size_t i = 0; i < config_.channel_count; i++) {
         adc_pattern[i] = {
@@ -132,7 +132,7 @@ bool Signal::start(const SignalConfig& config) {
         return false;
     }
     
-    // Запускаем ADC
+    // Start ADC
     err = adc_continuous_start(adc_handle_);
     if (err != ESP_OK) {
         adc_continuous_deinit(adc_handle_);
@@ -140,20 +140,20 @@ bool Signal::start(const SignalConfig& config) {
         return false;
     }
     
-    // Настраиваем триггер
+    // Configure trigger
     trigger_.start(config_.trigger_mode, config_.trigger_level);
     
-    // Сбрасываем буферы
+    // Reset buffers
     memset(signal_buffers_, 0, sizeof(signal_buffers_));
     memset(buffer_indices_, 0, sizeof(buffer_indices_));
     
-    // Сбрасываем триггер
+    // Reset trigger
     trigger_.reset_level();
     
-    // Сбрасываем состояние готовности
+    // Reset ready state
     is_ready_ = false;
     
-    // Вычисляем фактор децимации
+    // Calculate decimation factor
     if (config_.sampling_rate < 20000) {
         decimation_factor_ = ((20000 + config_.sampling_rate - 1) / config_.sampling_rate);
     } else {
@@ -161,12 +161,12 @@ bool Signal::start(const SignalConfig& config) {
     }
     sample_counter_ = 0;
     
-    // Сбрасываем медианный фильтр
+    // Reset median filter
     memset(median_buffer_, 0, sizeof(median_buffer_));
     median_index_ = 0;
     median_initialized_ = false;
     
-    // Создаем задачу
+    // Create task
     BaseType_t task_created = xTaskCreate(
         read_task_wrapper,
         "signal_read_task",
@@ -227,7 +227,7 @@ bool Signal::get_stats(size_t index, SignalStats* stats) const {
     stats->frequency = 0;
     
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
-        // Вычисляем статистику напрямую из кольцевого буфера
+        // Calculate statistics directly from ring buffer
         uint64_t sum = 0;
         uint32_t valid_samples = 0;
         size_t start_idx = buffer_indices_[index];
@@ -235,7 +235,7 @@ bool Signal::get_stats(size_t index, SignalStats* stats) const {
         for (size_t i = 0; i < SIGNAL_BUFFER_SIZE; i++) {
             size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
             uint16_t sample = signal_buffers_[index][buf_idx];
-            if (sample > 0) { // Считаем только валидные сэмплы
+            if (sample > 0) { // Count only valid samples
                 if (sample < stats->min_value) stats->min_value = sample;
                 if (sample > stats->max_value) stats->max_value = sample;
                 sum += sample;
@@ -243,12 +243,12 @@ bool Signal::get_stats(size_t index, SignalStats* stats) const {
             }
         }
         
-        // Вычисляем среднее значение
+        // Calculate average value
         if (valid_samples > 0) {
             stats->avg_value = static_cast<float>(sum) / valid_samples;
         }
         
-        // Вычисляем частоту напрямую из кольцевого буфера
+        // Calculate frequency directly from ring buffer
         stats->frequency = calculate_frequency_from_buffer_direct(index);
         
         xSemaphoreGive((SemaphoreHandle_t)mutex_);
@@ -263,12 +263,12 @@ float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const
         return 0.0f;
     }
     
-    // Простой алгоритм детекции частоты через zero crossing
+    // Simple frequency detection algorithm through zero crossing
     uint64_t sum = 0;
     uint32_t valid_samples = 0;
     size_t start_idx = buffer_indices_[channel_index];
     
-    // Вычисляем среднее значение
+    // Calculate average value
     for (size_t i = 0; i < SIGNAL_BUFFER_SIZE; i++) {
         size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
         uint16_t sample = signal_buffers_[channel_index][buf_idx];
@@ -284,7 +284,7 @@ float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const
     
     float avg_value = static_cast<float>(sum) / valid_samples;
     
-    // Находим min и max для вычисления гистерезиса
+    // Find min and max for hysteresis calculation
     uint16_t min_val = UINT16_MAX;
     uint16_t max_val = 0;
     
@@ -302,7 +302,7 @@ float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const
     float upper_threshold = avg_value + hysteresis / 2.0;
     float lower_threshold = avg_value - hysteresis / 2.0;
     
-    // Подсчитываем переходы через среднее значение
+    // Count crossings through average value
     bool signal_was_high = false;
     uint32_t crossing_count = 0;
     uint64_t total_delta = 0;
@@ -329,11 +329,11 @@ float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const
         }
     }
     
-    // Вычисляем частоту с учетом децимации
+    // Calculate frequency with decimation consideration
     if (crossing_count > 1 && total_delta > 0) {
         float avg_delta = static_cast<float>(total_delta) / (crossing_count - 1);
         if (avg_delta > 0) {
-            // Учитываем децимацию: эффективная частота дискретизации
+            // Consider decimation: effective sampling rate
             float effective_sample_rate = static_cast<float>(config_.sampling_rate);
             return effective_sample_rate / avg_delta;
         }
@@ -351,7 +351,7 @@ bool Signal::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
         size_t copy_size = (size < SIGNAL_BUFFER_SIZE) ? size : SIGNAL_BUFFER_SIZE;
         size_t start_idx = buffer_indices_[index];
         
-        // Копируем данные из кольцевого буфера
+        // Copy data from ring buffer
         for (size_t i = 0; i < copy_size; i++) {
             size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
             buffer[i] = signal_buffers_[index][buf_idx];
@@ -374,10 +374,10 @@ void Signal::read_task() {
     uint32_t total_sample_count = 0;
     
     while (true) {
-        // Ждем сигнала для начала работы
+        // Wait for signal to start work
         xSemaphoreTake((SemaphoreHandle_t)start_semaphore_, portMAX_DELAY);
         
-        // Сбрасываем счетчик при каждом запуске
+        // Reset counter on each start
         total_sample_count = 0;
         trigger_.reset();
         
@@ -394,7 +394,7 @@ void Signal::read_task() {
                     adc_digi_output_data_t *p = (adc_digi_output_data_t*)
                         &adc_read_buffer[i * SOC_ADC_DIGI_RESULT_BYTES];
                     
-                    // Находим индекс канала
+                    // Find channel index
                     size_t channel_index = config_.channel_count;
                     for (size_t j = 0; j < config_.channel_count; j++) {
                         if (config_.channels[j] == p->type1.channel) {
@@ -407,22 +407,22 @@ void Signal::read_task() {
                         uint16_t current_sample = p->type1.data;
                         uint16_t filtered_sample = apply_median_filter(current_sample);
                         
-                        // Децимация: обрабатываем только каждый N-й сэмпл
+                        // Decimation: process only every N-th sample
                         sample_counter_++;
                         if (sample_counter_ >= decimation_factor_) {
-                            // Проверяем триггер только для первого канала на децимированных сэмплах
+                            // Check trigger only for first channel on decimated samples
                             if (channel_index == 0) {
                                 TriggerState state = trigger_.check_trigger(filtered_sample);
                                 
-                                // Если буфер готов, устанавливаем флаг
+                                // If buffer is ready, set flag
                                 if (state.buffer_ready) {
                                     is_ready_ = true;
                                 }
                                 
-                                // Если нужно остановить работу
+                                // If need to stop work
                                 if (!state.continue_work) {
                                     stop_requested_ = true;
-                                    break; // Выходим из цикла чтения
+                                    break; // Exit reading loop
                                 }
                             }
                             
@@ -435,10 +435,10 @@ void Signal::read_task() {
                 
 
             } else if (ret == ESP_ERR_TIMEOUT) {
-                // Нормальный timeout, продолжаем
+                // Normal timeout, continue
                 continue;
             } else {
-                // Ошибка чтения
+                // Read error
                 vTaskDelay(pdMS_TO_TICKS(10));
             }
         }
@@ -455,7 +455,7 @@ void Signal::process_sample(size_t channel_index, uint16_t sample) {
     }
     
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
-        // Сохраняем отфильтрованный сэмпл в буфер
+        // Save filtered sample to buffer
         signal_buffers_[channel_index][buffer_indices_[channel_index]] = sample;
         buffer_indices_[channel_index] = (buffer_indices_[channel_index] + 1) % SIGNAL_BUFFER_SIZE;
         
@@ -464,16 +464,16 @@ void Signal::process_sample(size_t channel_index, uint16_t sample) {
 }
 
 uint16_t Signal::apply_median_filter(uint16_t sample) {
-    // Простая реализация медианного фильтра с буфером
+    // Simple median filter implementation with buffer
     static uint16_t median_buffer[MEDIAN_FILTER_WINDOW];
     static size_t median_index = 0;
     static bool median_initialized = false;
     
-    // Добавляем новый сэмпл в буфер
+    // Add new sample to buffer
     median_buffer[median_index] = sample;
     median_index = (median_index + 1) % MEDIAN_FILTER_WINDOW;
     
-    // Если буфер еще не заполнен, возвращаем исходный сэмпл
+    // If buffer is not yet filled, return original sample
     if (!median_initialized && median_index == 0) {
         median_initialized = true;
     }
@@ -482,13 +482,13 @@ uint16_t Signal::apply_median_filter(uint16_t sample) {
         return sample;
     }
     
-    // Копируем буфер для сортировки
+    // Copy buffer for sorting
     uint16_t temp_buffer[MEDIAN_FILTER_WINDOW];
     memcpy(temp_buffer, median_buffer, sizeof(median_buffer));
     
-    // Сортируем буфер
+    // Sort buffer
     std::sort(temp_buffer, temp_buffer + MEDIAN_FILTER_WINDOW);
     
-    // Возвращаем медианное значение (средний элемент)
+    // Return median value (middle element)
     return temp_buffer[MEDIAN_FILTER_WINDOW / 2];
 }
