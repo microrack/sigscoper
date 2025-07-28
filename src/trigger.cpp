@@ -6,7 +6,6 @@ Trigger::Trigger(size_t buffer_size) {
     threshold_ = 2048;
     armed_ = false;
     fired_ = false;
-    position_ = 0;
     samples_after_trigger_ = 0;
     buffer_size_ = buffer_size;
     half_buffer_ = buffer_size_ / 2;
@@ -22,7 +21,6 @@ void Trigger::start(TriggerMode mode, uint16_t threshold) {
     threshold_ = threshold;
     armed_ = (mode_ != TriggerMode::FREE);
     fired_ = false;
-    position_ = 0;
     samples_after_trigger_ = 0;
     prev_sample_ = threshold;
     first_sample_ = true;
@@ -48,6 +46,15 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
     TriggerState state;
     state.buffer_ready = false;
     state.continue_work = true;
+    
+    if(mode_ == TriggerMode::FREE) {
+        if(samples_after_trigger_ < buffer_size_) {
+            samples_after_trigger_++;
+            return TriggerState{false, true};
+        }
+
+        return TriggerState{true, true};
+    }
     
     // Если триггер уже сработал, проверяем состояние записи
     if (fired_) {
@@ -95,7 +102,6 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
     
     if (trigger_condition) {
         fired_ = true;
-        position_ = half_buffer_;
         samples_after_trigger_ = 0;
         state.buffer_ready = false;
         state.continue_work = true; // Продолжаем записывать после триггера
@@ -110,7 +116,10 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
 
 void Trigger::reset_level() {
     // Сбрасываем только уровень триггера
+    first_sample_ = true;
     auto_level_ = threshold_;
+
+    reset();
 }
 
 void Trigger::reset() {
@@ -119,10 +128,6 @@ void Trigger::reset() {
     armed_ = (mode_ != TriggerMode::FREE);
     samples_after_trigger_ = 0;
     prev_sample_ = threshold_;
-    first_sample_ = true;
-    
-    // Сбрасываем счетчики для автоматического уровня триггера
-    auto_level_ = threshold_;
 }
 
 void Trigger::update_auto_level(uint16_t sample) {

@@ -212,6 +212,11 @@ bool Signal::get_stats(size_t index, SignalStats* stats) const {
     if (!is_ready_) {
         return false;
     }
+
+    stats->min_value = UINT16_MAX;
+    stats->max_value = 0;
+    stats->avg_value = 0;
+    stats->frequency = 0;
     
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
         // Вычисляем статистику напрямую из кольцевого буфера
@@ -395,10 +400,11 @@ void Signal::read_task() {
                     
                     if (channel_index < config_.channel_count) {
                         uint16_t current_sample = p->type1.data;
+                        uint16_t filtered_sample = apply_median_filter(current_sample);
                         
                         // Проверяем триггер только для первого канала
                         if (channel_index == 0) {
-                            TriggerState state = trigger_.check_trigger(current_sample);
+                            TriggerState state = trigger_.check_trigger(filtered_sample);
                             
                             // Если буфер готов, устанавливаем флаг
                             if (state.buffer_ready) {
@@ -414,7 +420,7 @@ void Signal::read_task() {
                         }
                         
                         // Всегда обрабатываем сэмпл (записываем в буфер)
-                        process_sample(channel_index, current_sample);
+                        process_sample(channel_index, filtered_sample);
                         total_sample_count++;
                     }
                 }
@@ -442,11 +448,8 @@ void Signal::process_sample(size_t channel_index, uint16_t sample) {
     }
     
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
-        // Применяем медианный фильтр к сэмплу
-        uint16_t filtered_sample = apply_median_filter(sample);
-        
         // Сохраняем отфильтрованный сэмпл в буфер
-        signal_buffers_[channel_index][buffer_indices_[channel_index]] = filtered_sample;
+        signal_buffers_[channel_index][buffer_indices_[channel_index]] = sample;
         buffer_indices_[channel_index] = (buffer_indices_[channel_index] + 1) % SIGNAL_BUFFER_SIZE;
         
         xSemaphoreGive((SemaphoreHandle_t)mutex_);

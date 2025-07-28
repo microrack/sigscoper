@@ -47,7 +47,6 @@ public:
     
     // Геттеры
     bool is_fired() const { return fired_; }
-    size_t get_position() const { return position_; }
     uint16_t get_auto_level() const { return auto_level_; }
     bool is_armed() const { return armed_; }
     size_t get_buffer_size() const { return buffer_size_; }

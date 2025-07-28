@@ -118,13 +118,13 @@ void setup() {
 }
 
 SignalStats stats;
-uint16_t buffer[64];
+uint16_t buffer[SCREEN_WIDTH];
 
 void loop() {
     static uint32_t last_update = 0;
 
     signal_monitor->get_stats(0, &stats);
-    if(signal_monitor->get_buffer(0, 64, buffer)) {
+    if(signal_monitor->get_buffer(0, SCREEN_WIDTH, buffer)) {
         last_update++;
         signal_monitor->restart();
     }
@@ -137,18 +137,21 @@ void loop() {
         std::min(std::max(-9.0, stats.max_value / 1000.0), 9.0),
         stats.frequency
     );
+    /*
     display.setCursor(0, 10);
     display.printf("T: %s %u %u",
         signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT",
         last_update,
         signal_monitor->get_auto_trigger_level()
     );
+    */
 
     int graph_y = 40;
-    for (int i = 0; i < 64; i++) {
-        int y = graph_y + (buffer[i] * 20) / 4095;
+    for (int i = 0; i < SCREEN_WIDTH; i++) {
+        // map range 900 to 2400 to 60 to 20
+        int y = map(buffer[i], 600, 2400, 64, 10);
         if (y >= 0 && y < SCREEN_HEIGHT) {
-            display.drawPixel(i * 2, y, SSD1306_WHITE);
+            display.drawPixel(i, y, SSD1306_WHITE);
         }
     }
     

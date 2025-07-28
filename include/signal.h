@@ -99,7 +99,6 @@ public:
     // Геттеры
     bool is_running() const { return running_; }
     bool is_trigger_fired() const { return trigger_.is_fired(); }
-    size_t get_trigger_position() const { return trigger_.get_position(); }
     uint16_t get_auto_trigger_level() const { return trigger_.get_auto_level(); }
     size_t get_max_channels() const { return MAX_CHANNELS; }
     bool is_ready() const { return is_ready_; }
