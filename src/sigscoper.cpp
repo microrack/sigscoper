@@ -342,7 +342,7 @@ float Sigscoper::calculate_frequency_from_buffer_direct(size_t channel_index) co
     return 0.0f;
 }
 
-bool Sigscoper::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
+bool Sigscoper::get_buffer(size_t index, size_t size, uint16_t* buffer, size_t* position) const {
     if (!buffer || index >= config_.channel_count || size == 0) {
         return false;
     }
@@ -356,6 +356,8 @@ bool Sigscoper::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
             size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
             buffer[i] = signal_buffers_[index][buf_idx];
         }
+
+        *position = start_idx;
         
         xSemaphoreGive((SemaphoreHandle_t)mutex_);
         return true;

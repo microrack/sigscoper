@@ -109,6 +109,6 @@ public:
     bool is_ready() const { return is_ready_; }
     
     // Data operations
-    bool get_buffer(size_t index, size_t size, uint16_t* buffer) const;
+    bool get_buffer(size_t index, size_t size, uint16_t* buffer, size_t* position) const;
     bool get_stats(size_t index, SigscoperStats* stats) const;
 }; 
