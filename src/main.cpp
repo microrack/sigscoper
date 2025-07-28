@@ -5,7 +5,7 @@
 #include <driver/ledc.h>
 #include <driver/gptimer.h>
 #include <soc/adc_channel.h>
-#include "signal.h"
+#include "sigscoper.h"
 
 // Конфигурация OLED дисплея
 #define SCREEN_WIDTH 128
@@ -28,7 +28,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define TIMER_RESOLUTION_HZ   (1000000) // 1MHz
 #define TIMER_INTERVAL_MS     (1000)    // 1ms
 
-Signal signal_monitor;
+Sigscoper signal_monitor;
 gptimer_handle_t gptimer = NULL;
 
 bool IRAM_ATTR onTimer(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx) {
@@ -99,7 +99,7 @@ void setup() {
     gptimer_start(gptimer);
     
     // Create signal configuration
-    SignalConfig signal_config;
+    SigscoperConfig signal_config;
     signal_config.channel_count = 1;
     signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
     signal_config.trigger_mode = TriggerMode::FREE;
@@ -113,7 +113,7 @@ void setup() {
     }
 }
 
-SignalStats stats;
+SigscoperStats stats;
 uint16_t buffer[SCREEN_WIDTH];
 
 void loop() {

@@ -17,13 +17,13 @@
 #define SAMPLE_RATE 20000
 
 // Structure for signal statistics
-struct SignalStats {
+struct SigscoperStats {
     uint16_t min_value;
     uint16_t max_value;
     float avg_value;
     float frequency;
     
-    SignalStats() {
+    SigscoperStats() {
         min_value = UINT16_MAX;
         max_value = 0;
         avg_value = 0;
@@ -31,15 +31,15 @@ struct SignalStats {
     }
 };
 
-// Signal configuration structure
-struct SignalConfig {
+// Sigscoper configuration structure
+struct SigscoperConfig {
     size_t channel_count;
     adc_channel_t channels[MAX_CHANNELS];
     TriggerMode trigger_mode;
     uint16_t trigger_level;
     uint32_t sampling_rate;
     
-    SignalConfig() {
+    SigscoperConfig() {
         channel_count = 0;
         trigger_mode = TriggerMode::FREE;
         trigger_level = 2048;
@@ -48,10 +48,10 @@ struct SignalConfig {
     }
 };
 
-class Signal {
+class Sigscoper {
 private:
     // Configuration
-    SignalConfig config_;
+    SigscoperConfig config_;
     
     // ADC
     adc_continuous_handle_t adc_handle_;
@@ -93,11 +93,11 @@ private:
     float calculate_frequency_from_buffer_direct(size_t channel_index) const;
 
 public:
-    Signal();
-    Signal(size_t buffer_size);
-    ~Signal();
+    Sigscoper();
+    Sigscoper(size_t buffer_size);
+    ~Sigscoper();
     
-    bool start(const SignalConfig& config);
+    bool start(const SigscoperConfig& config);
     void stop();
     void restart();
     
@@ -110,5 +110,5 @@ public:
     
     // Data operations
     bool get_buffer(size_t index, size_t size, uint16_t* buffer) const;
-    bool get_stats(size_t index, SignalStats* stats) const;
+    bool get_stats(size_t index, SigscoperStats* stats) const;
 }; 

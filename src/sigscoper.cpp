@@ -1,14 +1,14 @@
-#include "signal.h"
+#include "sigscoper.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 #include <cstring>
 #include <algorithm>
 
-Signal::Signal() : Signal(SIGNAL_BUFFER_SIZE) {
+Sigscoper::Sigscoper() : Sigscoper(SIGNAL_BUFFER_SIZE) {
 }
 
-Signal::Signal(size_t buffer_size) : trigger_(buffer_size, TRIGGER_POSITON) {
+Sigscoper::Sigscoper(size_t buffer_size) : trigger_(buffer_size, TRIGGER_POSITON) {
     // Configuration initialization
     config_.channel_count = 0;
     config_.trigger_mode = TriggerMode::FREE;
@@ -42,7 +42,7 @@ Signal::Signal(size_t buffer_size) : trigger_(buffer_size, TRIGGER_POSITON) {
     median_initialized_ = false;
 }
 
-Signal::~Signal() {
+Sigscoper::~Sigscoper() {
     stop();
     stop_requested_ = true;
     if (start_semaphore_) {
@@ -72,7 +72,7 @@ Signal::~Signal() {
     }
 }
 
-bool Signal::start(const SignalConfig& config) {
+bool Sigscoper::start(const SigscoperConfig& config) {
     if (running_) {
         return false;
     }
@@ -189,7 +189,7 @@ bool Signal::start(const SignalConfig& config) {
     return true;
 }
 
-void Signal::restart() {
+void Sigscoper::restart() {
     running_ = true;
     stop_requested_ = false;
     is_ready_ = false;
@@ -197,7 +197,7 @@ void Signal::restart() {
     xSemaphoreGive((SemaphoreHandle_t)start_semaphore_);
 }
 
-void Signal::stop() {
+void Sigscoper::stop() {
     if (!running_) {
         return;
     }
@@ -211,12 +211,12 @@ void Signal::stop() {
     }
     
     running_ = false;
-    Serial.println("Signal monitoring paused - task will wait for next start signal");
+    Serial.println("Sigscoper monitoring paused - task will wait for next start signal");
 }
 
 
 
-bool Signal::get_stats(size_t index, SignalStats* stats) const {
+bool Sigscoper::get_stats(size_t index, SigscoperStats* stats) const {
     if (!stats || index >= config_.channel_count) {
         return false;
     }
@@ -258,7 +258,7 @@ bool Signal::get_stats(size_t index, SignalStats* stats) const {
     return false;
 }
 
-float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const {
+float Sigscoper::calculate_frequency_from_buffer_direct(size_t channel_index) const {
     if (SIGNAL_BUFFER_SIZE < 2) {
         return 0.0f;
     }
@@ -342,7 +342,7 @@ float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const
     return 0.0f;
 }
 
-bool Signal::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
+bool Sigscoper::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
     if (!buffer || index >= config_.channel_count || size == 0) {
         return false;
     }
@@ -364,12 +364,12 @@ bool Signal::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
     return false;
 }
 
-void Signal::read_task_wrapper(void* parameter) {
-    Signal* signal = static_cast<Signal*>(parameter);
+void Sigscoper::read_task_wrapper(void* parameter) {
+    Sigscoper* signal = static_cast<Sigscoper*>(parameter);
     signal->read_task();
 }
 
-void Signal::read_task() {
+void Sigscoper::read_task() {
     uint8_t adc_read_buffer[CONV_FRAME_SIZE];
     uint32_t total_sample_count = 0;
     
@@ -449,7 +449,7 @@ void Signal::read_task() {
 
 
 
-void Signal::process_sample(size_t channel_index, uint16_t sample) {
+void Sigscoper::process_sample(size_t channel_index, uint16_t sample) {
     if (channel_index >= config_.channel_count) {
         return;
     }
@@ -463,7 +463,7 @@ void Signal::process_sample(size_t channel_index, uint16_t sample) {
     }
 }
 
-uint16_t Signal::apply_median_filter(uint16_t sample) {
+uint16_t Sigscoper::apply_median_filter(uint16_t sample) {
     // Simple median filter implementation with buffer
     static uint16_t median_buffer[MEDIAN_FILTER_WINDOW];
     static size_t median_index = 0;
