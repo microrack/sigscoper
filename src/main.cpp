@@ -102,8 +102,8 @@ void setup() {
     SignalConfig signal_config;
     signal_config.channel_count = 1;
     signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
-    signal_config.trigger_mode = TriggerMode::FREE;
-    signal_config.trigger_level = 2048;
+    signal_config.trigger_mode = TriggerMode::AUTO_FALL;
+    signal_config.trigger_level = 1000;
     
     // Создаем монитор сигнала
     signal_monitor = new Signal();
@@ -142,7 +142,7 @@ void loop() {
     display.printf("T: %s %u %u",
         signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT",
         last_update,
-        signal_monitor->get_auto_trigger_level()
+        signal_monitor->get_trigger_threshold()
     );
     */
 
@@ -158,6 +158,19 @@ void loop() {
             display.drawLine(i, y1 + 1, i + 1, y2 + 1, SSD1306_WHITE);
         }
     }
+
+    // draw trigger level using dotted line
+    int trigger_level =
+        map(signal_monitor->get_trigger_threshold(), 400, 2400, 64, 10);
+    for(int i = 0; i < SCREEN_WIDTH; i += 2) {
+        display.drawPixel(i, trigger_level, SSD1306_WHITE);
+    }
+
+    // draw tirgger position using dotted line
+    for(int i = 10; i < SCREEN_HEIGHT; i += 2) {
+        display.drawPixel(SCREEN_WIDTH / 2, i, SSD1306_WHITE);
+    }
+    
     
     display.display();
     

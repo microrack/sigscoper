@@ -8,7 +8,7 @@
 Signal::Signal() : Signal(SIGNAL_BUFFER_SIZE) {
 }
 
-Signal::Signal(size_t buffer_size) : trigger_(buffer_size) {
+Signal::Signal(size_t buffer_size) : trigger_(buffer_size, TRIGGER_POSITON) {
     // Инициализация конфигурации
     config_.channel_count = 0;
     config_.trigger_mode = TriggerMode::FREE;
@@ -413,7 +413,6 @@ void Signal::read_task() {
                             
                             // Если нужно остановить работу
                             if (!state.continue_work) {
-                                Serial.println("Trigger buffer complete, stopping acquisition");
                                 stop_requested_ = true;
                                 break; // Выходим из цикла чтения
                             }
@@ -436,7 +435,6 @@ void Signal::read_task() {
         }
 
         running_ = false;
-        Serial.println("Read task paused, waiting for next start signal");
     }
 }
 

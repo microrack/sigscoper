@@ -22,12 +22,13 @@ class Trigger {
 private:
     TriggerMode mode_;
     uint16_t threshold_;
+    uint16_t hysteresis_;
     bool armed_;
     bool fired_;
-    size_t position_;
+    bool ready_to_trigger_;
     size_t samples_after_trigger_;
     size_t buffer_size_;
-    size_t half_buffer_;
+    size_t trigger_position_;
     uint16_t prev_sample_;
     bool first_sample_;
     
@@ -38,7 +39,7 @@ private:
     void update_auto_level(uint16_t sample);
     
 public:
-    Trigger(size_t buffer_size = 128);
+    Trigger(size_t buffer_size, size_t trigger_position);
     
     void start(TriggerMode mode, uint16_t threshold);
     TriggerState check_trigger(uint16_t sample);
@@ -47,8 +48,7 @@ public:
     
     // Геттеры
     bool is_fired() const { return fired_; }
-    uint16_t get_auto_level() const { return auto_level_; }
+    uint16_t get_threshold() const { return threshold_; }
     bool is_armed() const { return armed_; }
     size_t get_buffer_size() const { return buffer_size_; }
-    size_t get_half_buffer() const { return half_buffer_; }
 };

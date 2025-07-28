@@ -11,8 +11,9 @@
 #include "trigger.h"
 
 #define MAX_CHANNELS 8
-#define SIGNAL_BUFFER_SIZE 128
-#define MEDIAN_FILTER_WINDOW 5
+#define SIGNAL_BUFFER_SIZE 256
+#define TRIGGER_POSITON 64
+#define MEDIAN_FILTER_WINDOW 3
 #define SAMPLE_RATE 20000
 
 // Структура для статистики сигнала
@@ -99,7 +100,7 @@ public:
     // Геттеры
     bool is_running() const { return running_; }
     bool is_trigger_fired() const { return trigger_.is_fired(); }
-    uint16_t get_auto_trigger_level() const { return trigger_.get_auto_level(); }
+    uint16_t get_trigger_threshold() const { return trigger_.get_threshold(); }
     size_t get_max_channels() const { return MAX_CHANNELS; }
     bool is_ready() const { return is_ready_; }
     
