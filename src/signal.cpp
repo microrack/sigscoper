@@ -5,7 +5,10 @@
 #include <cstring>
 #include <algorithm>
 
-Signal::Signal() {
+Signal::Signal() : Signal(SIGNAL_BUFFER_SIZE) {
+}
+
+Signal::Signal(size_t buffer_size) : trigger_(buffer_size) {
     // Инициализация конфигурации
     config_.channel_count = 0;
     config_.trigger_mode = TriggerMode::FREE;
@@ -25,23 +28,11 @@ Signal::Signal() {
     // Инициализация состояния
     running_ = false;
     stop_requested_ = false;
+    is_ready_ = false;
     
     // Инициализация данных
     memset(signal_buffers_, 0, sizeof(signal_buffers_));
     memset(buffer_indices_, 0, sizeof(buffer_indices_));
-    
-    // Инициализация триггера
-    trigger_mode_ = TriggerMode::FREE;
-    trigger_level_ = 2048;
-    trigger_enabled_ = false;
-    trigger_armed_ = false;
-    trigger_fired_ = false;
-    trigger_position_ = 0;
-    
-    // Инициализация автоматического уровня триггера
-    auto_trigger_sum_ = 0;
-    auto_trigger_count_ = 0;
-    auto_trigger_level_ = 2048;
     
     // Инициализация медианного фильтра
     memset(median_buffer_, 0, sizeof(median_buffer_));
@@ -146,21 +137,17 @@ bool Signal::start(const SignalConfig& config) {
     }
     
     // Настраиваем триггер
-    trigger_mode_ = config_.trigger_mode;
-    trigger_level_ = config_.trigger_level;
-    trigger_enabled_ = (trigger_mode_ != TriggerMode::FREE);
-    trigger_armed_ = trigger_enabled_;
-    trigger_fired_ = false;
-    trigger_position_ = 0;
-    
-    // Сбрасываем статистику
-    auto_trigger_sum_ = 0;
-    auto_trigger_count_ = 0;
-    auto_trigger_level_ = 2048;
+    trigger_.start(config_.trigger_mode, config_.trigger_level);
     
     // Сбрасываем буферы
     memset(signal_buffers_, 0, sizeof(signal_buffers_));
     memset(buffer_indices_, 0, sizeof(buffer_indices_));
+    
+    // Сбрасываем триггер
+    trigger_.reset();
+    
+    // Сбрасываем состояние готовности
+    is_ready_ = false;
     
     // Сбрасываем медианный фильтр
     memset(median_buffer_, 0, sizeof(median_buffer_));
@@ -207,38 +194,7 @@ void Signal::stop() {
     Serial.println("Signal monitoring paused - task will wait for next start signal");
 }
 
-void Signal::reset_trigger() {
-    trigger_fired_ = false;
-    trigger_position_ = 0;
-    trigger_armed_ = trigger_enabled_;
-    
-    // Сбрасываем счетчики для автоматического уровня триггера
-    auto_trigger_sum_ = 0;
-    auto_trigger_count_ = 0;
-    auto_trigger_level_ = trigger_level_;
-    
-    // Очищаем буферы
-    for (size_t i = 0; i < config_.channel_count; i++) {
-        buffer_indices_[i] = 0;
-        memset(signal_buffers_[i], 0, sizeof(signal_buffers_[i]));
-    }
-}
 
-void Signal::update_auto_trigger_level(uint16_t sample) {
-    // Обновляем среднее значение для автоматического уровня триггера
-    auto_trigger_sum_ += sample;
-    auto_trigger_count_++;
-    
-    // Вычисляем новое среднее значение
-    if (auto_trigger_count_ > 0) {
-        auto_trigger_level_ = static_cast<uint16_t>(auto_trigger_sum_ / auto_trigger_count_);
-    }
-    
-    // Для AUTO режимов используем вычисленный уровень
-    if (trigger_mode_ == TriggerMode::AUTO_RISE || trigger_mode_ == TriggerMode::AUTO_FALL) {
-        trigger_level_ = auto_trigger_level_;
-    }
-}
 
 SignalStats Signal::get_stats(size_t index) const {
     SignalStats result;
@@ -365,8 +321,8 @@ bool Signal::get_buffer(size_t index, size_t size, uint16_t* buffer) const {
         return false;
     }
     
-    // Если триггер включен и еще не сработал, возвращаем ошибку
-    if (trigger_enabled_ && !trigger_fired_) {
+    // Если буфер не готов, возвращаем false
+    if (!is_ready_) {
         return false;
     }
     
@@ -395,9 +351,7 @@ void Signal::read_task_wrapper(void* parameter) {
 void Signal::read_task() {
     uint8_t adc_read_buffer[CONV_FRAME_SIZE];
     uint32_t total_sample_count = 0;
-    uint16_t prev_sample = 0;
     bool first_sample = true;
-    size_t samples_after_trigger = 0;
     
     while (true) {
         // Ждем сигнала для начала работы
@@ -406,8 +360,7 @@ void Signal::read_task() {
         // Сбрасываем счетчик при каждом запуске
         total_sample_count = 0;
         first_sample = true;
-        samples_after_trigger = 0;
-        reset_trigger();
+        trigger_.reset();
         
         while (!stop_requested_) {
             uint32_t current_bytes_read;
@@ -434,45 +387,33 @@ void Signal::read_task() {
                     if (channel_index < config_.channel_count) {
                         uint16_t current_sample = p->type1.data;
                         
-                        // Обновляем автоматический уровень триггера для первого канала
-                        if (channel_index == 0) {
-                            update_auto_trigger_level(current_sample);
-                        }
-                        
                         // Проверяем триггер только для первого канала
                         if (channel_index == 0) {
-                            if (!first_sample && trigger_enabled_ && trigger_armed_) {
-                                if (check_trigger(current_sample, prev_sample)) {
-                                    trigger_fired_ = true;
-                                    trigger_position_ = SIGNAL_BUFFER_SIZE / 2;
-                                    trigger_armed_ = false;
-                                    samples_after_trigger = 0;
+                            if (!first_sample && trigger_.is_armed()) {
+                                TriggerState state = trigger_.check_trigger(current_sample);
+                                
+                                // Если буфер готов, устанавливаем флаг
+                                if (state.buffer_ready) {
+                                    is_ready_ = true;
+                                }
+                                
+                                // Если нужно остановить работу
+                                if (!state.continue_work) {
+                                    Serial.println("Trigger buffer complete, stopping acquisition");
+                                    stop();
+                                    break; // Выходим из цикла чтения
                                 }
                             }
-                            prev_sample = current_sample;
                             first_sample = false;
                         }
                         
                         // Всегда обрабатываем сэмпл (записываем в буфер)
                         process_sample(channel_index, current_sample);
                         total_sample_count++;
-                        
-                        // Если триггер сработал, считаем сэмплы после триггера
-                        if (trigger_fired_) {
-                            samples_after_trigger++;
-                            
-                            // Если записали половину буфера после триггера, останавливаем запись
-                            if (samples_after_trigger >= SIGNAL_BUFFER_SIZE / 2) {
-                                break;
-                            }
-                        }
                     }
                 }
                 
-                // Если триггер сработал и буфер дописан, выходим из цикла
-                if (trigger_fired_ && samples_after_trigger >= SIGNAL_BUFFER_SIZE / 2) {
-                    break;
-                }
+
             } else if (ret == ESP_ERR_TIMEOUT) {
                 // Нормальный timeout, продолжаем
                 continue;
@@ -486,25 +427,7 @@ void Signal::read_task() {
     }
 }
 
-bool Signal::check_trigger(uint16_t sample, uint16_t prev_sample) {
-    switch (trigger_mode_) {
-        case TriggerMode::AUTO_RISE:
-            return (prev_sample < trigger_level_) && (sample >= trigger_level_);
-            
-        case TriggerMode::AUTO_FALL:
-            return (prev_sample > trigger_level_) && (sample <= trigger_level_);
-            
-        case TriggerMode::FIXED_RISE:
-            return (prev_sample < trigger_level_) && (sample >= trigger_level_);
-            
-        case TriggerMode::FIXED_FALL:
-            return (prev_sample > trigger_level_) && (sample <= trigger_level_);
-            
-        case TriggerMode::FREE:
-        default:
-            return false;
-    }
-}
+
 
 void Signal::process_sample(size_t channel_index, uint16_t sample) {
     if (channel_index >= config_.channel_count) {

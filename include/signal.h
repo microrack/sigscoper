@@ -8,6 +8,7 @@
 #include <esp_adc/adc_continuous.h>
 #include <cstring>
 #include <algorithm>
+#include "trigger.h"
 
 #define MAX_CHANNELS 8
 #define SIGNAL_BUFFER_SIZE 128
@@ -27,15 +28,6 @@ struct SignalStats {
         avg_value = 0;
         frequency = 0;
     }
-};
-
-// Режимы триггера
-enum class TriggerMode {
-    FREE,
-    AUTO_RISE,
-    AUTO_FALL,
-    FIXED_RISE,
-    FIXED_FALL
 };
 
 // Структура конфигурации сигнала
@@ -71,23 +63,14 @@ private:
     // Состояние
     bool running_;
     bool stop_requested_;
+    bool is_ready_;
     
     // Данные
     uint16_t signal_buffers_[MAX_CHANNELS][SIGNAL_BUFFER_SIZE];
     size_t buffer_indices_[MAX_CHANNELS];
     
     // Триггер
-    TriggerMode trigger_mode_;
-    uint16_t trigger_level_;
-    bool trigger_enabled_;
-    bool trigger_armed_;
-    bool trigger_fired_;
-    size_t trigger_position_;
-    
-    // Автоматический уровень триггера
-    uint64_t auto_trigger_sum_;
-    uint32_t auto_trigger_count_;
-    uint16_t auto_trigger_level_;
+    Trigger trigger_;
     
     // Медианный фильтр
     uint16_t median_buffer_[MEDIAN_FILTER_WINDOW];
@@ -102,13 +85,11 @@ private:
     void read_task();
     void process_sample(size_t channel_index, uint16_t sample);
     uint16_t apply_median_filter(uint16_t sample);
-    bool check_trigger(uint16_t sample, uint16_t prev_sample);
-    void reset_trigger();
-    void update_auto_trigger_level(uint16_t sample);
     float calculate_frequency_from_buffer_direct(size_t channel_index) const;
 
 public:
     Signal();
+    Signal(size_t buffer_size);
     ~Signal();
     
     bool start(const SignalConfig& config);
@@ -116,10 +97,11 @@ public:
     
     // Геттеры
     bool is_running() const { return running_; }
-    bool is_trigger_fired() const { return trigger_fired_; }
-    size_t get_trigger_position() const { return trigger_position_; }
-    uint16_t get_auto_trigger_level() const { return auto_trigger_level_; }
+    bool is_trigger_fired() const { return trigger_.is_fired(); }
+    size_t get_trigger_position() const { return trigger_.get_position(); }
+    uint16_t get_auto_trigger_level() const { return trigger_.get_auto_level(); }
     size_t get_max_channels() const { return MAX_CHANNELS; }
+    bool is_ready() const { return is_ready_; }
     
     // Работа с данными
     bool get_buffer(size_t index, size_t size, uint16_t* buffer) const;

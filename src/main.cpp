@@ -137,6 +137,8 @@ void loop() {
             display.setCursor(0, 40);
             display.printf("Trigger: %s", signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT");
             display.setCursor(0, 50);
+            display.printf("Ready: %s", signal_monitor->is_ready() ? "YES" : "NO");
+            display.setCursor(0, 60);
             display.printf("Auto Level: %u", signal_monitor->get_auto_trigger_level());
             
             // Простой график сигнала
