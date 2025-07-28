@@ -1,139 +1,162 @@
 #include <Arduino.h>
+#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <Wire.h>
+#include <driver/ledc.h>
+#include <driver/gptimer.h>
 #include <soc/adc_channel.h>
 #include "signal.h"
 
-// OLED display configuration
+// Конфигурация OLED дисплея
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-// Buffer for graph
-uint16_t signal_graph_buffer[SCREEN_WIDTH];
-int signal_graph_index = 0;
+// Конфигурация LEDC
+#define LEDC_TIMER              LEDC_TIMER_0
+#define LEDC_MODE               LEDC_LOW_SPEED_MODE
+#define LEDC_OUTPUT_IO          (2) // GPIO2
+#define LEDC_CHANNEL            LEDC_CHANNEL_0
+#define LEDC_DUTY_RES           LEDC_TIMER_13_BIT
+#define LEDC_DUTY               (4095) // 50%
+#define LEDC_FREQUENCY          (1000) // 1kHz
 
-// Pin Configuration
-const int ledcPin = 26;
+// Конфигурация таймера
+#define TIMER_RESOLUTION_HZ   (1000000) // 1MHz
+#define TIMER_INTERVAL_MS     (1000)    // 1ms
 
-// LEDC Configuration
-const int ledcResolution = 8;
-const int ledcFreq = 100000; // 100 kHz
-
-// Sine wave configuration
-const uint32_t sampling_frequency = 20000; // 20 kHz
-const float sine_frequency = 440.0; // 440 Hz
-
-// Globals for ISR
-hw_timer_t *timer = NULL;
-volatile uint32_t phase_accumulator = 0;
-const uint32_t phase_increment = (uint32_t)((sine_frequency / (float)sampling_frequency) * 4294967296.0);
-uint8_t sin_lut[256];
-
-// Signal object
 Signal* signal_monitor = nullptr;
+gptimer_handle_t gptimer = NULL;
 
-void IRAM_ATTR onTimer() {
-    phase_accumulator += phase_increment;
-    uint8_t index = phase_accumulator >> 24;
-    ledcWrite(ledcPin, sin_lut[index]);
+bool IRAM_ATTR onTimer(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_ctx) {
+    // Переключаем состояние LED
+    static bool led_state = false;
+    led_state = !led_state;
+    ledcWrite(LEDC_CHANNEL, led_state ? LEDC_DUTY : 0);
+    return false; // Не перезапускать таймер автоматически
 }
 
 void setup() {
-    delay(1000);
     Serial.begin(115200);
-
-    // Initialize OLED display
+    
+    // Инициализация OLED
     if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
         Serial.println(F("SSD1306 allocation failed"));
         for(;;);
     }
-
-    display.setRotation(2);
-    memset(signal_graph_buffer, 0, sizeof(signal_graph_buffer));
-
-    // Generate sine lookup table
-    for (int i = 0; i < 256; i++) {
-        float angle = 2.0 * PI * (float)i / 256.0;
-        sin_lut[i] = (uint8_t)((sin(angle) + 1.0) * 0.5 * 255.0);
-    }
-
-    // Configure LEDC (новый API)
-    ledcAttach(ledcPin, ledcFreq, ledcResolution);
-
-    // Configure Timer (новый API)
-    timer = timerBegin(1000000);
-    timerAttachInterrupt(timer, &onTimer);
-    timerAlarm(timer, 1000000 / sampling_frequency, true, 0);
-
-    // Создаем Signal объект для мониторинга пина 36 (SENSOR_VP)
-    adc_channel_t channels[] = {static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL)};
-    signal_monitor = new Signal(channels, 1);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
     
+    // Настройка LEDC
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_MODE,
+        .duty_resolution  = LEDC_DUTY_RES,
+        .timer_num        = LEDC_TIMER,
+        .freq_hz          = LEDC_FREQUENCY,
+        .clk_cfg          = LEDC_AUTO_CLK
+    };
+    ledc_timer_config(&ledc_timer);
+    
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num   = LEDC_OUTPUT_IO,
+        .speed_mode = LEDC_MODE,
+        .channel    = LEDC_CHANNEL,
+        .intr_type  = LEDC_INTR_DISABLE,
+        .timer_sel  = LEDC_TIMER,
+        .duty       = 0,
+        .hpoint     = 0
+    };
+    ledc_channel_config(&ledc_channel);
+    
+    // Настройка таймера
+    gptimer_config_t timer_config = {
+        .clk_src = GPTIMER_CLK_SRC_APB,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = TIMER_RESOLUTION_HZ,
+    };
+    gptimer_new_timer(&timer_config, &gptimer);
+    
+    gptimer_alarm_config_t alarm_config = {
+        .alarm_count = TIMER_RESOLUTION_HZ / 1000 * TIMER_INTERVAL_MS,
+        .reload_count = 0,
+        .flags = {
+            .auto_reload_on_alarm = true,
+        },
+    };
+    gptimer_set_alarm_action(gptimer, &alarm_config);
+    
+    gptimer_event_callbacks_t cbs = {
+        .on_alarm = onTimer,
+    };
+    gptimer_register_event_callbacks(gptimer, &cbs, NULL);
+    
+    gptimer_start(gptimer);
+    
+    // Создаем конфигурацию сигнала
+    SignalConfig signal_config;
+    signal_config.channel_count = 1;
+    signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
+    signal_config.trigger_mode = TriggerMode::AUTO_RISE;
+    signal_config.trigger_level = 2048;
+    
+    // Создаем монитор сигнала
+    signal_monitor = new Signal();
     if (signal_monitor) {
         Serial.println("Starting signal monitoring with AUTO_RISE trigger...");
-        signal_monitor->start(TriggerMode::AUTO_RISE, 2048);
+        if (signal_monitor->start(signal_config)) {
+            Serial.println("Signal monitoring started successfully");
+        } else {
+            Serial.println("Failed to start signal monitoring");
+        }
     }
 }
 
 void loop() {
-    static unsigned long last_display_time = 0;
+    static uint32_t last_update = 0;
+    uint32_t current_time = millis();
     
-    // Обновляем дисплей каждые 100 мс
-    if (millis() - last_display_time >= 100) {
+    // Обновляем дисплей каждые 100ms
+    if (current_time - last_update >= 100) {
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        
         if (signal_monitor && signal_monitor->is_running()) {
-            // Получаем статистику для первого канала (индекс 0)
             SignalStats stats = signal_monitor->get_stats(0);
             
-            // Получаем буфер данных
-            uint16_t buffer[SCREEN_WIDTH];
-            if (signal_monitor->get_buffer(0, SCREEN_WIDTH, buffer)) {
-                // Копируем в график
-                memcpy(signal_graph_buffer, buffer, sizeof(signal_graph_buffer));
-            }
-
-            // Отображаем на OLED
-            display.clearDisplay();
-            display.setTextSize(1);
-            display.setTextColor(SSD1306_WHITE);
-            display.setCursor(0, 0);
-            display.printf("Min:%u Max:%u", stats.min_value, stats.max_value);
+            display.printf("Min: %u", stats.min_value);
             display.setCursor(0, 10);
-            display.printf("Avg:%.1f Freq:%.1f Hz", stats.avg_value, stats.frequency);
+            display.printf("Max: %u", stats.max_value);
             display.setCursor(0, 20);
-            display.printf("Trigger: %s", signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT");
+            display.printf("Avg: %.1f", stats.avg_value);
             display.setCursor(0, 30);
+            display.printf("Freq: %.1f Hz", stats.frequency);
+            display.setCursor(0, 40);
+            display.printf("Trigger: %s", signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT");
+            display.setCursor(0, 50);
             display.printf("Auto Level: %u", signal_monitor->get_auto_trigger_level());
-
-            // Рисуем график
+            
+            // Простой график сигнала
             int graph_y = 40;
-            int graph_height = SCREEN_HEIGHT - graph_y;
-
-            for (int i = 0; i < SCREEN_WIDTH - 1; i++) {
-                int y1 = map(signal_graph_buffer[i], 0, 4096, graph_y + graph_height, graph_y);
-                int y2 = map(signal_graph_buffer[i + 1], 0, 4096, graph_y + graph_height, graph_y);
-                display.drawLine(i, y1, i + 1, y2, SSD1306_WHITE);
-            }
-
-            // Рисуем линию среднего значения
-            if (stats.avg_value > 0) {
-                int avg_y = map((int)stats.avg_value, 0, 4096, graph_y + graph_height, graph_y);
-                for (int i = 0; i < SCREEN_WIDTH; i += 4) {
-                    display.drawPixel(i, avg_y, SSD1306_WHITE);
+            uint16_t buffer[64];
+            if (signal_monitor->get_buffer(0, 64, buffer)) {
+                for (int i = 0; i < 64; i++) {
+                    int y = graph_y + (buffer[i] * 20) / 4095;
+                    if (y >= 0 && y < SCREEN_HEIGHT) {
+                        display.drawPixel(i * 2, y, SSD1306_WHITE);
+                    }
                 }
             }
-
-            signal_monitor->reset_stats();
-
-            display.display();
+        } else {
+            display.println("Signal monitor not running");
         }
         
-        last_display_time = millis();
+        display.display();
+        last_update = current_time;
     }
     
-    // Небольшая задержка для предотвращения перегрузки
     delay(10);
 }
