@@ -50,6 +50,8 @@ void setup() {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
+    // rotate display
+    display.setRotation(2);
     
     // Настройка LEDC
     ledc_timer_config_t ledc_timer = {
@@ -100,7 +102,7 @@ void setup() {
     SignalConfig signal_config;
     signal_config.channel_count = 1;
     signal_config.channels[0] = static_cast<adc_channel_t>(ADC1_GPIO36_CHANNEL);
-    signal_config.trigger_mode = TriggerMode::AUTO_RISE;
+    signal_config.trigger_mode = TriggerMode::FREE;
     signal_config.trigger_level = 2048;
     
     // Создаем монитор сигнала
@@ -115,50 +117,42 @@ void setup() {
     }
 }
 
+SignalStats stats;
+uint16_t buffer[64];
+
 void loop() {
     static uint32_t last_update = 0;
-    uint32_t current_time = millis();
-    
-    // Обновляем дисплей каждые 100ms
-    if (current_time - last_update >= 100) {
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        
-        if (signal_monitor && signal_monitor->is_running()) {
-            SignalStats stats = signal_monitor->get_stats(0);
-            
-            display.printf("Min: %u", stats.min_value);
-            display.setCursor(0, 10);
-            display.printf("Max: %u", stats.max_value);
-            display.setCursor(0, 20);
-            display.printf("Avg: %.1f", stats.avg_value);
-            display.setCursor(0, 30);
-            display.printf("Freq: %.1f Hz", stats.frequency);
-            display.setCursor(0, 40);
-            display.printf("Trigger: %s", signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT");
-            display.setCursor(0, 50);
-            display.printf("Ready: %s", signal_monitor->is_ready() ? "YES" : "NO");
-            display.setCursor(0, 60);
-            display.printf("Auto Level: %u", signal_monitor->get_auto_trigger_level());
-            
-            // Простой график сигнала
-            int graph_y = 40;
-            uint16_t buffer[64];
-            if (signal_monitor->get_buffer(0, 64, buffer)) {
-                for (int i = 0; i < 64; i++) {
-                    int y = graph_y + (buffer[i] * 20) / 4095;
-                    if (y >= 0 && y < SCREEN_HEIGHT) {
-                        display.drawPixel(i * 2, y, SSD1306_WHITE);
-                    }
-                }
-            }
-        } else {
-            display.println("Signal monitor not running");
-        }
-        
-        display.display();
-        last_update = current_time;
+
+    signal_monitor->get_stats(0, &stats);
+    if(signal_monitor->get_buffer(0, 64, buffer)) {
+        last_update++;
+        signal_monitor->restart();
     }
+
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.printf("%.1f %.1f %.1f %.1f Hz", 
+        std::min(std::max(-9.0, stats.min_value / 1000.0), 9.0),
+        std::min(std::max(-9.0, stats.avg_value / 1000.0), 9.0),
+        std::min(std::max(-9.0, stats.max_value / 1000.0), 9.0),
+        stats.frequency
+    );
+    display.setCursor(0, 10);
+    display.printf("T: %s %u %u",
+        signal_monitor->is_trigger_fired() ? "FIRED" : "WAIT",
+        last_update,
+        signal_monitor->get_auto_trigger_level()
+    );
+
+    int graph_y = 40;
+    for (int i = 0; i < 64; i++) {
+        int y = graph_y + (buffer[i] * 20) / 4095;
+        if (y >= 0 && y < SCREEN_HEIGHT) {
+            display.drawPixel(i * 2, y, SSD1306_WHITE);
+        }
+    }
+    
+    display.display();
     
     delay(10);
 }

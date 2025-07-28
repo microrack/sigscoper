@@ -94,6 +94,7 @@ public:
     
     bool start(const SignalConfig& config);
     void stop();
+    void restart();
     
     // Геттеры
     bool is_running() const { return running_; }
@@ -105,5 +106,5 @@ public:
     
     // Работа с данными
     bool get_buffer(size_t index, size_t size, uint16_t* buffer) const;
-    SignalStats get_stats(size_t index) const;
+    bool get_stats(size_t index, SignalStats* stats) const;
 }; 

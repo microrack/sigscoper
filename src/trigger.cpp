@@ -11,10 +11,9 @@ Trigger::Trigger(size_t buffer_size) {
     buffer_size_ = buffer_size;
     half_buffer_ = buffer_size_ / 2;
     prev_sample_ = 2048;
+    first_sample_ = true;
     
     // Автоматический уровень триггера
-    auto_sum_ = 0;
-    auto_count_ = 0;
     auto_level_ = 2048;
 }
 
@@ -26,14 +25,23 @@ void Trigger::start(TriggerMode mode, uint16_t threshold) {
     position_ = 0;
     samples_after_trigger_ = 0;
     prev_sample_ = threshold;
+    first_sample_ = true;
     
     // Сбрасываем счетчики для автоматического уровня триггера
-    auto_sum_ = 0;
-    auto_count_ = 0;
     auto_level_ = threshold;
 }
 
 TriggerState Trigger::check_trigger(uint16_t sample) {
+    // Если это первый сэмпл, возвращаем специальное состояние
+    if (first_sample_) {
+        first_sample_ = false;
+        prev_sample_ = sample;
+        TriggerState state;
+        state.buffer_ready = false;
+        state.continue_work = true;
+        return state;
+    }
+    
     // Обновляем автоматический уровень
     update_auto_level(sample);
     
@@ -100,28 +108,26 @@ TriggerState Trigger::check_trigger(uint16_t sample) {
     return state;
 }
 
+void Trigger::reset_level() {
+    // Сбрасываем только уровень триггера
+    auto_level_ = threshold_;
+}
+
 void Trigger::reset() {
     fired_ = false;
     position_ = 0;
     armed_ = (mode_ != TriggerMode::FREE);
     samples_after_trigger_ = 0;
     prev_sample_ = threshold_;
+    first_sample_ = true;
     
     // Сбрасываем счетчики для автоматического уровня триггера
-    auto_sum_ = 0;
-    auto_count_ = 0;
     auto_level_ = threshold_;
 }
 
 void Trigger::update_auto_level(uint16_t sample) {
     // Обновляем среднее значение для автоматического уровня триггера
-    auto_sum_ += sample;
-    auto_count_++;
-    
-    // Вычисляем новое среднее значение
-    if (auto_count_ > 0) {
-        auto_level_ = static_cast<uint16_t>(auto_sum_ / auto_count_);
-    }
+    auto_level_ = sample * 0.001 + auto_level_ * 0.999;
     
     // Для AUTO режимов используем вычисленный уровень
     if (mode_ == TriggerMode::AUTO_RISE || mode_ == TriggerMode::AUTO_FALL) {

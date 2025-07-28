@@ -13,12 +13,10 @@ enum class TriggerMode {
 };
 
 // Структура для возврата состояния триггера
-struct TriggerState {
+typedef struct _TriggerState {
     bool buffer_ready;    // Готов ли буфер к работе через get_buffer и get_stats
     bool continue_work;   // Нужно ли продолжать работу (если нет, вызывать stop)
-    
-    TriggerState() : buffer_ready(false), continue_work(true) {}
-};
+} TriggerState;
 
 class Trigger {
 private:
@@ -31,11 +29,10 @@ private:
     size_t buffer_size_;
     size_t half_buffer_;
     uint16_t prev_sample_;
+    bool first_sample_;
     
     // Автоматический уровень триггера
-    uint64_t auto_sum_;
-    uint32_t auto_count_;
-    uint16_t auto_level_;
+    float auto_level_;
     
     // Приватные методы
     void update_auto_level(uint16_t sample);
@@ -45,6 +42,7 @@ public:
     
     void start(TriggerMode mode, uint16_t threshold);
     TriggerState check_trigger(uint16_t sample);
+    void reset_level();
     void reset();
     
     // Геттеры

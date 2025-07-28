@@ -144,7 +144,7 @@ bool Signal::start(const SignalConfig& config) {
     memset(buffer_indices_, 0, sizeof(buffer_indices_));
     
     // Сбрасываем триггер
-    trigger_.reset();
+    trigger_.reset_level();
     
     // Сбрасываем состояние готовности
     is_ready_ = false;
@@ -177,6 +177,13 @@ bool Signal::start(const SignalConfig& config) {
     return true;
 }
 
+void Signal::restart() {
+    running_ = true;
+    stop_requested_ = false;
+    trigger_.reset();
+    xSemaphoreGive((SemaphoreHandle_t)start_semaphore_);
+}
+
 void Signal::stop() {
     if (!running_) {
         return;
@@ -196,11 +203,14 @@ void Signal::stop() {
 
 
 
-SignalStats Signal::get_stats(size_t index) const {
-    SignalStats result;
+bool Signal::get_stats(size_t index, SignalStats* stats) const {
+    if (!stats || index >= config_.channel_count) {
+        return false;
+    }
     
-    if (index >= config_.channel_count) {
-        return result;
+    // Если буфер не готов, возвращаем false
+    if (!is_ready_) {
+        return false;
     }
     
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
@@ -213,8 +223,8 @@ SignalStats Signal::get_stats(size_t index) const {
             size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
             uint16_t sample = signal_buffers_[index][buf_idx];
             if (sample > 0) { // Считаем только валидные сэмплы
-                if (sample < result.min_value) result.min_value = sample;
-                if (sample > result.max_value) result.max_value = sample;
+                if (sample < stats->min_value) stats->min_value = sample;
+                if (sample > stats->max_value) stats->max_value = sample;
                 sum += sample;
                 valid_samples++;
             }
@@ -222,16 +232,17 @@ SignalStats Signal::get_stats(size_t index) const {
         
         // Вычисляем среднее значение
         if (valid_samples > 0) {
-            result.avg_value = static_cast<float>(sum) / valid_samples;
+            stats->avg_value = static_cast<float>(sum) / valid_samples;
         }
         
         // Вычисляем частоту напрямую из кольцевого буфера
-        result.frequency = calculate_frequency_from_buffer_direct(index);
+        stats->frequency = calculate_frequency_from_buffer_direct(index);
         
         xSemaphoreGive((SemaphoreHandle_t)mutex_);
+        return true;
     }
     
-    return result;
+    return false;
 }
 
 float Signal::calculate_frequency_from_buffer_direct(size_t channel_index) const {
@@ -351,7 +362,6 @@ void Signal::read_task_wrapper(void* parameter) {
 void Signal::read_task() {
     uint8_t adc_read_buffer[CONV_FRAME_SIZE];
     uint32_t total_sample_count = 0;
-    bool first_sample = true;
     
     while (true) {
         // Ждем сигнала для начала работы
@@ -359,7 +369,6 @@ void Signal::read_task() {
         
         // Сбрасываем счетчик при каждом запуске
         total_sample_count = 0;
-        first_sample = true;
         trigger_.reset();
         
         while (!stop_requested_) {
@@ -389,22 +398,19 @@ void Signal::read_task() {
                         
                         // Проверяем триггер только для первого канала
                         if (channel_index == 0) {
-                            if (!first_sample && trigger_.is_armed()) {
-                                TriggerState state = trigger_.check_trigger(current_sample);
-                                
-                                // Если буфер готов, устанавливаем флаг
-                                if (state.buffer_ready) {
-                                    is_ready_ = true;
-                                }
-                                
-                                // Если нужно остановить работу
-                                if (!state.continue_work) {
-                                    Serial.println("Trigger buffer complete, stopping acquisition");
-                                    stop();
-                                    break; // Выходим из цикла чтения
-                                }
+                            TriggerState state = trigger_.check_trigger(current_sample);
+                            
+                            // Если буфер готов, устанавливаем флаг
+                            if (state.buffer_ready) {
+                                is_ready_ = true;
                             }
-                            first_sample = false;
+                            
+                            // Если нужно остановить работу
+                            if (!state.continue_work) {
+                                Serial.println("Trigger buffer complete, stopping acquisition");
+                                stop_requested_ = true;
+                                break; // Выходим из цикла чтения
+                            }
                         }
                         
                         // Всегда обрабатываем сэмпл (записываем в буфер)
@@ -422,7 +428,8 @@ void Signal::read_task() {
                 vTaskDelay(pdMS_TO_TICKS(10));
             }
         }
-        
+
+        running_ = false;
         Serial.println("Read task paused, waiting for next start signal");
     }
 }
