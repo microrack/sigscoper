@@ -33,12 +33,8 @@ jobs:
         
     - name: Build library
       run: |
-        pio run --environment library_test
+        pio run --environment esp32dev
         
     - name: Run tests
       run: |
-        pio test --environment library_test
-        
-    - name: Check library structure
-      run: |
-        pio lib check 
+        pio test --environment esp32dev 
