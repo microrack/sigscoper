@@ -158,7 +158,9 @@ void Trigger::update_auto_level(uint16_t sample) {
     auto_level_ = sample * auto_speed + auto_level_ * (1.0f - auto_speed);
     
     // For AUTO modes use calculated level
-    if (mode_ == TriggerMode::AUTO_RISE || mode_ == TriggerMode::AUTO_FALL) {
+    if (mode_ == TriggerMode::AUTO_RISE
+        || mode_ == TriggerMode::AUTO_FALL
+        || mode_ == TriggerMode::FREE) {
         threshold_ = auto_level_;
     }
 } 

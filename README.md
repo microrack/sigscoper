@@ -2,11 +2,6 @@
 
 A powerful signal oscilloscope library for ESP32 that provides real-time signal acquisition, triggering, and analysis capabilities.
 
-**Created by:** MICRORACK inc.  
-**Repository:** https://github.com/microrack/sigscoper  
-**Website:** https://microrack.org/  
-**License:** CC-BY-SA-4.0
-
 ## Features
 
 - **Real-time ADC sampling** with configurable sampling rates
