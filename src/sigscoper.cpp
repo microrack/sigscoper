@@ -40,9 +40,9 @@ Sigscoper::Sigscoper(size_t buffer_size) : trigger_() {
     memset(buffer_indices_, 0, sizeof(buffer_indices_));
     
     // Median filter initialization
-    memset(median_buffer_, 0, sizeof(median_buffer_));
-    median_index_ = 0;
-    median_initialized_ = false;
+    memset(median_buffers_, 0, sizeof(median_buffers_));
+    memset(median_indices_, 0, sizeof(median_indices_));
+    memset(median_initialized_, 0, sizeof(median_initialized_));
 }
 
 Sigscoper::~Sigscoper() {
@@ -193,10 +193,10 @@ bool Sigscoper::start(const SigscoperConfig& config) {
     }
     sample_counter_ = 0;
     
-    // Reset median filter
-    memset(median_buffer_, 0, sizeof(median_buffer_));
-    median_index_ = 0;
-    median_initialized_ = false;
+    // Reset median filters
+    memset(median_buffers_, 0, sizeof(median_buffers_));
+    memset(median_indices_, 0, sizeof(median_indices_));
+    memset(median_initialized_, 0, sizeof(median_initialized_));
 
     running_ = true;
     stop_requested_ = false;
@@ -424,10 +424,14 @@ void Sigscoper::read_task() {
                     
                     if (channel_index < config_.channel_count) {
                         uint16_t current_sample = p->type1.data;
-                        uint16_t filtered_sample = apply_median_filter(current_sample);
+                        uint16_t filtered_sample = apply_median_filter(channel_index, current_sample);
                         
                         // Decimation: process only every N-th sample
-                        sample_counter_++;
+                        // Update sample counter only for the first channel to synchronize all channels
+                        if (channel_index == 0) {
+                            sample_counter_++;
+                        }
+                        
                         if (sample_counter_ >= decimation_factor_) {
                             // Check trigger only for first channel on decimated samples
                             if (channel_index == 0) {
@@ -446,7 +450,11 @@ void Sigscoper::read_task() {
                             }
                             
                             process_sample(channel_index, filtered_sample);
-                            sample_counter_ = 0;
+                            
+                            // Reset sample counter only after processing the last channel
+                            if (channel_index == config_.channel_count - 1) {
+                                sample_counter_ = 0;
+                            }
                         }
                         total_sample_count++;
                     }
@@ -480,28 +488,28 @@ void Sigscoper::process_sample(size_t channel_index, uint16_t sample) {
     }
 }
 
-uint16_t Sigscoper::apply_median_filter(uint16_t sample) {
-    // Simple median filter implementation with buffer
-    static uint16_t median_buffer[MEDIAN_FILTER_WINDOW];
-    static size_t median_index = 0;
-    static bool median_initialized = false;
-    
-    // Add new sample to buffer
-    median_buffer[median_index] = sample;
-    median_index = (median_index + 1) % MEDIAN_FILTER_WINDOW;
-    
-    // If buffer is not yet filled, return original sample
-    if (!median_initialized && median_index == 0) {
-        median_initialized = true;
+uint16_t Sigscoper::apply_median_filter(size_t channel_index, uint16_t sample) {
+    if (channel_index >= MAX_CHANNELS) {
+        return sample;
     }
     
-    if (!median_initialized) {
+    // Simple median filter implementation with buffer
+    // Add new sample to buffer
+    median_buffers_[channel_index][median_indices_[channel_index]] = sample;
+    median_indices_[channel_index] = (median_indices_[channel_index] + 1) % MEDIAN_FILTER_WINDOW;
+    
+    // If buffer is not yet filled, return original sample
+    if (!median_initialized_[channel_index] && median_indices_[channel_index] == 0) {
+        median_initialized_[channel_index] = true;
+    }
+    
+    if (!median_initialized_[channel_index]) {
         return sample;
     }
     
     // Copy buffer for sorting
     uint16_t temp_buffer[MEDIAN_FILTER_WINDOW];
-    memcpy(temp_buffer, median_buffer, sizeof(median_buffer));
+    memcpy(temp_buffer, median_buffers_[channel_index], sizeof(median_buffers_[channel_index]));
     
     // Sort buffer
     std::sort(temp_buffer, temp_buffer + MEDIAN_FILTER_WINDOW);

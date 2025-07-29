@@ -82,9 +82,9 @@ private:
     Trigger trigger_;
     
     // Median filter
-    uint16_t median_buffer_[MEDIAN_FILTER_WINDOW];
-    size_t median_index_;
-    bool median_initialized_;
+    uint16_t median_buffers_[MAX_CHANNELS][MEDIAN_FILTER_WINDOW];
+    size_t median_indices_[MAX_CHANNELS];
+    bool median_initialized_[MAX_CHANNELS];
     
     // Constants
     static constexpr size_t CONV_FRAME_SIZE = 1024;
@@ -93,7 +93,7 @@ private:
     static void read_task_wrapper(void* param);
     void read_task();
     void process_sample(size_t channel_index, uint16_t sample);
-    uint16_t apply_median_filter(uint16_t sample);
+    uint16_t apply_median_filter(size_t channel_index, uint16_t sample);
     float calculate_frequency_from_buffer_direct(size_t channel_index) const;
 
 public:
