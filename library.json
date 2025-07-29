@@ -1,6 +1,6 @@
 {
   "name": "Sigscoper",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "ESP32 Signal Oscilloscope Library",
   "keywords": "esp32,oscilloscope,signal,adc,trigger",
   "repository": {
