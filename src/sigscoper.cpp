@@ -48,7 +48,7 @@ Sigscoper::~Sigscoper() {
     if (start_semaphore_) {
         xSemaphoreGive((SemaphoreHandle_t)start_semaphore_);
     }
-    vTaskDelay(pdMS_TO_TICKS(100)); // Даем задаче время на выход
+    vTaskDelay(pdMS_TO_TICKS(100)); // Give task time to exit
     
     if (read_task_handle_) {
         vTaskDelete((TaskHandle_t)read_task_handle_);
@@ -111,6 +111,7 @@ bool Sigscoper::begin() {
 
 bool Sigscoper::start(const SigscoperConfig& config) {
     if (running_) {
+        Serial.println("::start: Sigscoper already run");
         return false;
     }
     
@@ -143,8 +144,15 @@ bool Sigscoper::start(const SigscoperConfig& config) {
         .format = ADC_DIGI_OUTPUT_FORMAT_TYPE1,
     };
     
+    // Check if ADC is already running
+    if (adc_handle_) {
+        // Try to stop if it's running
+        // adc_continuous_stop(adc_handle_);
+    }
+    
     esp_err_t err = adc_continuous_config(adc_handle_, &dig_cfg);
     if (err != ESP_OK) {
+        // If configuration failed, deinit handle
         adc_continuous_deinit(adc_handle_);
         adc_handle_ = nullptr;
         return false;
@@ -183,11 +191,11 @@ bool Sigscoper::start(const SigscoperConfig& config) {
     memset(median_buffer_, 0, sizeof(median_buffer_));
     median_index_ = 0;
     median_initialized_ = false;
-    
+
     running_ = true;
     stop_requested_ = false;
     
-    // Запускаем задачу
+    // Start the task
     xSemaphoreGive((SemaphoreHandle_t)start_semaphore_);
     
     return true;
@@ -203,6 +211,7 @@ void Sigscoper::restart() {
 
 void Sigscoper::stop() {
     if (!running_) {
+        Serial.println("::stop: Sigscoper is not running");
         return;
     }
     
@@ -210,8 +219,6 @@ void Sigscoper::stop() {
     
     if (adc_handle_) {
         adc_continuous_stop(adc_handle_);
-        adc_continuous_deinit(adc_handle_);
-        adc_handle_ = nullptr;
     }
     
     running_ = false;
@@ -321,7 +328,7 @@ float Sigscoper::calculate_frequency_from_buffer_direct(size_t channel_index) co
                 
                 if (crossing_count > 0) {
                     uint32_t delta = i - last_crossing_index;
-                    if (delta >= 4) { // Минимум 200 μs между переходами при 20kHz
+                    if (delta >= 4) { // Minimum 200 μs between transitions at 20kHz
                         total_delta += delta;
                     }
                 }
@@ -448,8 +455,6 @@ void Sigscoper::read_task() {
                 vTaskDelay(pdMS_TO_TICKS(10));
             }
         }
-
-        running_ = false;
     }
 }
 
