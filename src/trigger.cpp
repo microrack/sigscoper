@@ -1,7 +1,7 @@
 #include "trigger.h"
 #include <Arduino.h>
 
-Trigger::Trigger(size_t buffer_size, size_t trigger_position) {
+Trigger::Trigger() {
     mode_ = TriggerMode::FREE;
     threshold_ = 2048;
     hysteresis_ = 200; // Default hysteresis
@@ -9,17 +9,17 @@ Trigger::Trigger(size_t buffer_size, size_t trigger_position) {
     fired_ = false;
     ready_to_trigger_ = false;
     samples_after_trigger_ = 0;
-    buffer_size_ = buffer_size;
+    buffer_size_ = 128; // Default buffer size
     prev_sample_ = 2048;
     first_sample_ = true;
-    trigger_position_ = trigger_position;
+    trigger_position_ = 64; // Default trigger position
     
     // Automatic trigger level
     auto_level_ = 2048;
     auto_speed_ = 0.002f;  // Default value
 }
 
-void Trigger::start(TriggerMode mode, uint16_t threshold, float auto_speed) {
+void Trigger::start(TriggerMode mode, uint16_t threshold, float auto_speed, size_t buffer_size, size_t trigger_position) {
     mode_ = mode;
     threshold_ = threshold;
     hysteresis_ = threshold / 40; // Hysteresis as 2.5% of threshold
@@ -29,6 +29,10 @@ void Trigger::start(TriggerMode mode, uint16_t threshold, float auto_speed) {
     samples_after_trigger_ = 0;
     prev_sample_ = threshold;
     first_sample_ = true;
+    
+    // Set buffer parameters
+    buffer_size_ = buffer_size;
+    trigger_position_ = trigger_position;
     
     // Set automatic trigger level parameters
     auto_level_ = threshold;

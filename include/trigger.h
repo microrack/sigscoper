@@ -40,9 +40,9 @@ private:
     void update_auto_level(uint16_t sample);
     
 public:
-    Trigger(size_t buffer_size, size_t trigger_position);
+    Trigger();
     
-    void start(TriggerMode mode, uint16_t threshold, float auto_speed = 0.002f);
+    void start(TriggerMode mode, uint16_t threshold, float auto_speed, size_t buffer_size, size_t trigger_position);
     TriggerState check_trigger(uint16_t sample);
     void reset_level();
     void reset();

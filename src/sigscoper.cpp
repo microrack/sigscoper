@@ -8,12 +8,15 @@
 Sigscoper::Sigscoper() : Sigscoper(SIGNAL_BUFFER_SIZE) {
 }
 
-Sigscoper::Sigscoper(size_t buffer_size) : trigger_(buffer_size, TRIGGER_POSITON) {
+Sigscoper::Sigscoper(size_t buffer_size) : trigger_() {
     // Configuration initialization
     config_.channel_count = 0;
     config_.trigger_mode = TriggerMode::FREE;
     config_.trigger_level = 2048;
     memset(config_.channels, 0, sizeof(config_.channels));
+    
+    // Buffer size initialization
+    buffer_size_ = (buffer_size > SIGNAL_BUFFER_SIZE) ? SIGNAL_BUFFER_SIZE : buffer_size;
     
     // ADC initialization
     adc_handle_ = nullptr;
@@ -123,6 +126,9 @@ bool Sigscoper::start(const SigscoperConfig& config) {
     // Save configuration
     config_ = config;
     
+    // Update internal buffer size (limited by SIGNAL_BUFFER_SIZE)
+    buffer_size_ = (config_.buffer_size > SIGNAL_BUFFER_SIZE) ? SIGNAL_BUFFER_SIZE : config_.buffer_size;
+    
     // Configure patterns for all channels
     adc_digi_pattern_config_t adc_pattern[MAX_CHANNELS];
     for (size_t i = 0; i < config_.channel_count; i++) {
@@ -167,7 +173,7 @@ bool Sigscoper::start(const SigscoperConfig& config) {
     }
     
     // Configure trigger
-    trigger_.start(config_.trigger_mode, config_.trigger_level, config_.auto_speed);
+    trigger_.start(config_.trigger_mode, config_.trigger_level, config_.auto_speed, buffer_size_, buffer_size_ / 2);
     
     // Reset buffers
     memset(signal_buffers_, 0, sizeof(signal_buffers_));
@@ -243,8 +249,8 @@ bool Sigscoper::get_stats(size_t index, SigscoperStats* stats) const {
         uint32_t valid_samples = 0;
         size_t start_idx = buffer_indices_[index];
         
-        for (size_t i = 0; i < SIGNAL_BUFFER_SIZE; i++) {
-            size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
+        for (size_t i = 0; i < buffer_size_; i++) {
+            size_t buf_idx = (start_idx + i) % buffer_size_;
             uint16_t sample = signal_buffers_[index][buf_idx];
             if (sample > 0) { // Count only valid samples
                 if (sample < stats->min_value) stats->min_value = sample;
@@ -270,7 +276,7 @@ bool Sigscoper::get_stats(size_t index, SigscoperStats* stats) const {
 }
 
 float Sigscoper::calculate_frequency_from_buffer_direct(size_t channel_index) const {
-    if (SIGNAL_BUFFER_SIZE < 2) {
+    if (buffer_size_ < 2) {
         return 0.0f;
     }
     
@@ -280,8 +286,8 @@ float Sigscoper::calculate_frequency_from_buffer_direct(size_t channel_index) co
     size_t start_idx = buffer_indices_[channel_index];
     
     // Calculate average value
-    for (size_t i = 0; i < SIGNAL_BUFFER_SIZE; i++) {
-        size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
+    for (size_t i = 0; i < buffer_size_; i++) {
+        size_t buf_idx = (start_idx + i) % buffer_size_;
         uint16_t sample = signal_buffers_[channel_index][buf_idx];
         if (sample > 0) {
             sum += sample;
@@ -299,8 +305,8 @@ float Sigscoper::calculate_frequency_from_buffer_direct(size_t channel_index) co
     uint16_t min_val = UINT16_MAX;
     uint16_t max_val = 0;
     
-    for (size_t i = 0; i < SIGNAL_BUFFER_SIZE; i++) {
-        size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
+    for (size_t i = 0; i < buffer_size_; i++) {
+        size_t buf_idx = (start_idx + i) % buffer_size_;
         uint16_t sample = signal_buffers_[channel_index][buf_idx];
         if (sample > 0) {
             if (sample < min_val) min_val = sample;
@@ -319,8 +325,8 @@ float Sigscoper::calculate_frequency_from_buffer_direct(size_t channel_index) co
     uint64_t total_delta = 0;
     uint32_t last_crossing_index = 0;
     
-    for (size_t i = 0; i < SIGNAL_BUFFER_SIZE; i++) {
-        size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
+    for (size_t i = 0; i < buffer_size_; i++) {
+        size_t buf_idx = (start_idx + i) % buffer_size_;
         uint16_t sample = signal_buffers_[channel_index][buf_idx];
         if (sample > 0) {
             if (!signal_was_high && sample > upper_threshold) {
@@ -359,12 +365,12 @@ bool Sigscoper::get_buffer(size_t index, size_t size, uint16_t* buffer, size_t* 
     }
     
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
-        size_t copy_size = (size < SIGNAL_BUFFER_SIZE) ? size : SIGNAL_BUFFER_SIZE;
+        size_t copy_size = (size < buffer_size_) ? size : buffer_size_;
         size_t start_idx = buffer_indices_[index];
         
         // Copy data from ring buffer
         for (size_t i = 0; i < copy_size; i++) {
-            size_t buf_idx = (start_idx + i) % SIGNAL_BUFFER_SIZE;
+            size_t buf_idx = (start_idx + i) % buffer_size_;
             buffer[i] = signal_buffers_[index][buf_idx];
         }
 
@@ -468,7 +474,7 @@ void Sigscoper::process_sample(size_t channel_index, uint16_t sample) {
     if (xSemaphoreTake((SemaphoreHandle_t)mutex_, portMAX_DELAY) == pdTRUE) {
         // Save filtered sample to buffer
         signal_buffers_[channel_index][buffer_indices_[channel_index]] = sample;
-        buffer_indices_[channel_index] = (buffer_indices_[channel_index] + 1) % SIGNAL_BUFFER_SIZE;
+        buffer_indices_[channel_index] = (buffer_indices_[channel_index] + 1) % buffer_size_;
         
         xSemaphoreGive((SemaphoreHandle_t)mutex_);
     }

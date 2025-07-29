@@ -11,8 +11,7 @@
 #include "trigger.h"
 
 #define MAX_CHANNELS 8
-#define SIGNAL_BUFFER_SIZE 128
-#define TRIGGER_POSITON 64
+#define SIGNAL_BUFFER_SIZE 2048
 #define MEDIAN_FILTER_WINDOW 3
 #define SAMPLE_RATE 20000
 
@@ -39,6 +38,7 @@ struct SigscoperConfig {
     uint16_t trigger_level;
     uint32_t sampling_rate;
     float auto_speed;  // Controls coefficient of update_auto_level (0.0-1.0)
+    size_t buffer_size;  // Buffer size for signal storage
     
     SigscoperConfig() {
         channel_count = 0;
@@ -46,6 +46,7 @@ struct SigscoperConfig {
         trigger_level = 2048;
         sampling_rate = 20000;
         auto_speed = 0.002f;  // Default value (equivalent to previous 0.0002)
+        buffer_size = SIGNAL_BUFFER_SIZE;  // Default buffer size
         memset(channels, 0, sizeof(channels));
     }
 };
@@ -54,6 +55,7 @@ class Sigscoper {
 private:
     // Configuration
     SigscoperConfig config_;
+    size_t buffer_size_;  // Internal buffer size (limited by SIGNAL_BUFFER_SIZE)
     
     // ADC
     adc_continuous_handle_t adc_handle_;

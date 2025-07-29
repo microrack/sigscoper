@@ -7,6 +7,7 @@ A powerful signal oscilloscope library for ESP32 that provides real-time signal 
 - **Real-time ADC sampling** with configurable sampling rates
 - **Advanced triggering** with multiple modes (FREE, AUTO_RISE, AUTO_FALL, FIXED_RISE, FIXED_FALL)
 - **Configurable auto trigger speed** for adaptive trigger level adjustment
+- **Configurable buffer sizes** up to 2048 samples for high-resolution capture
 - **Hysteresis support** for reliable triggering
 - **Decimation** for lower effective sampling rates
 - **Median filtering** for noise reduction
@@ -22,7 +23,12 @@ Add this library to your `platformio.ini`:
 
 ```ini
 lib_deps = 
-    https://github.com/microrack/sigscoper.git
+    microrack/Sigscoper
+```
+
+Or install via CLI:
+```bash
+pio lib install "microrack/Sigscoper"
 ```
 
 ### Arduino IDE
@@ -58,6 +64,7 @@ void setup() {
     config.trigger_level = 1000;
     config.sampling_rate = 20000;
     config.auto_speed = 0.002f;  // Auto trigger level update speed (0.0-1.0)
+    config.buffer_size = 2048;   // Buffer size for signal storage
     
     // Start signal monitoring
     if (!sigscoper.start(config)) {
@@ -107,6 +114,7 @@ struct SigscoperConfig {
     uint16_t trigger_level;         // Trigger level
     uint32_t sampling_rate;         // Sampling rate in Hz
     float auto_speed;               // Auto trigger level update speed (0.0-1.0)
+    size_t buffer_size;             // Buffer size for signal storage
 };
 ```
 
@@ -131,6 +139,17 @@ The `auto_speed` parameter controls how quickly the automatic trigger level adap
 - **Recommended**: 0.001-0.01 for most applications
 
 Higher values make the trigger more responsive but may cause instability with noisy signals.
+
+### Buffer Size Parameter
+
+The `buffer_size` parameter controls the amount of signal data stored for analysis:
+
+- **Range**: 1 to 2048 samples
+- **Default**: 2048 (maximum resolution)
+- **Memory usage**: ~4KB per channel (16-bit samples)
+- **Recommended**: 512-2048 for detailed analysis, 128-512 for basic monitoring
+
+Larger buffers provide better frequency resolution but use more memory.
 
 ### SigscoperStats
 
