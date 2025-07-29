@@ -38,12 +38,14 @@ struct SigscoperConfig {
     TriggerMode trigger_mode;
     uint16_t trigger_level;
     uint32_t sampling_rate;
+    float auto_speed;  // Controls coefficient of update_auto_level (0.0-1.0)
     
     SigscoperConfig() {
         channel_count = 0;
         trigger_mode = TriggerMode::FREE;
         trigger_level = 2048;
         sampling_rate = 20000;
+        auto_speed = 0.002f;  // Default value (equivalent to previous 0.0002)
         memset(channels, 0, sizeof(channels));
     }
 };

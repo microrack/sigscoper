@@ -11,6 +11,7 @@ A powerful signal oscilloscope library for ESP32 that provides real-time signal 
 
 - **Real-time ADC sampling** with configurable sampling rates
 - **Advanced triggering** with multiple modes (FREE, AUTO_RISE, AUTO_FALL, FIXED_RISE, FIXED_FALL)
+- **Configurable auto trigger speed** for adaptive trigger level adjustment
 - **Hysteresis support** for reliable triggering
 - **Decimation** for lower effective sampling rates
 - **Median filtering** for noise reduction
@@ -61,6 +62,7 @@ void setup() {
     config.trigger_mode = TriggerMode::AUTO_FALL;
     config.trigger_level = 1000;
     config.sampling_rate = 20000;
+    config.auto_speed = 0.002f;  // Auto trigger level update speed (0.0-1.0)
     
     // Start signal monitoring
     if (!sigscoper.start(config)) {
@@ -109,6 +111,7 @@ struct SigscoperConfig {
     TriggerMode trigger_mode;       // Trigger mode
     uint16_t trigger_level;         // Trigger level
     uint32_t sampling_rate;         // Sampling rate in Hz
+    float auto_speed;               // Auto trigger level update speed (0.0-1.0)
 };
 ```
 
@@ -121,6 +124,18 @@ Available trigger modes:
 - `TriggerMode::AUTO_FALL` - Auto trigger on falling edge
 - `TriggerMode::FIXED_RISE` - Fixed level trigger on rising edge
 - `TriggerMode::FIXED_FALL` - Fixed level trigger on falling edge
+
+### Auto Speed Parameter
+
+The `auto_speed` parameter controls how quickly the automatic trigger level adapts to signal changes:
+
+- **Range**: 0.0 to 1.0
+- **0.0**: No automatic adjustment (fixed level)
+- **1.0**: Immediate adjustment to current signal level
+- **Default**: 0.002 (slow, stable adjustment)
+- **Recommended**: 0.001-0.01 for most applications
+
+Higher values make the trigger more responsive but may cause instability with noisy signals.
 
 ### SigscoperStats
 

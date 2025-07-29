@@ -167,7 +167,7 @@ bool Sigscoper::start(const SigscoperConfig& config) {
     }
     
     // Configure trigger
-    trigger_.start(config_.trigger_mode, config_.trigger_level);
+    trigger_.start(config_.trigger_mode, config_.trigger_level, config_.auto_speed);
     
     // Reset buffers
     memset(signal_buffers_, 0, sizeof(signal_buffers_));

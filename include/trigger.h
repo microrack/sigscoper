@@ -34,6 +34,7 @@ private:
     
     // Automatic trigger level
     float auto_level_;
+    float auto_speed_;  // Controls coefficient of update_auto_level (0.0-1.0)
     
     // Private methods
     void update_auto_level(uint16_t sample);
@@ -41,7 +42,7 @@ private:
 public:
     Trigger(size_t buffer_size, size_t trigger_position);
     
-    void start(TriggerMode mode, uint16_t threshold);
+    void start(TriggerMode mode, uint16_t threshold, float auto_speed = 0.002f);
     TriggerState check_trigger(uint16_t sample);
     void reset_level();
     void reset();

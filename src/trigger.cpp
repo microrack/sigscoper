@@ -16,9 +16,10 @@ Trigger::Trigger(size_t buffer_size, size_t trigger_position) {
     
     // Automatic trigger level
     auto_level_ = 2048;
+    auto_speed_ = 0.002f;  // Default value
 }
 
-void Trigger::start(TriggerMode mode, uint16_t threshold) {
+void Trigger::start(TriggerMode mode, uint16_t threshold, float auto_speed) {
     mode_ = mode;
     threshold_ = threshold;
     hysteresis_ = threshold / 40; // Hysteresis as 2.5% of threshold
@@ -29,8 +30,9 @@ void Trigger::start(TriggerMode mode, uint16_t threshold) {
     prev_sample_ = threshold;
     first_sample_ = true;
     
-    // Reset automatic trigger level counters
+    // Set automatic trigger level parameters
     auto_level_ = threshold;
+    auto_speed_ = auto_speed;
 }
 
 TriggerState Trigger::check_trigger(uint16_t sample) {
@@ -151,7 +153,9 @@ void Trigger::reset() {
 
 void Trigger::update_auto_level(uint16_t sample) {
     // Update average value for automatic trigger level
-    auto_level_ = sample * 0.0002 + auto_level_ * 0.9998;
+    // auto_speed controls the coefficient: 0.0 = no change, 1.0 = immediate change
+    float auto_speed = max(0.0f, min(1.0f, auto_speed_));
+    auto_level_ = sample * auto_speed + auto_level_ * (1.0f - auto_speed);
     
     // For AUTO modes use calculated level
     if (mode_ == TriggerMode::AUTO_RISE || mode_ == TriggerMode::AUTO_FALL) {
